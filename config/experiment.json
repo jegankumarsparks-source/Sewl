@@ -55,6 +55,7 @@
     "min_liquidity_usd": 25000, "max_slots": 4, "validation_deadline_seconds": 30,
     "cooldown_minutes": 60, "max_leads_per_cycle": 30
   },
+  "app": { "enabled": true, "host": "127.0.0.1", "port": 8787 },
   "quotas": { "rpc_per_10s": 30, "dexscreener_per_min": 25, "jupiter_per_min": 25, "coingecko_per_min": 5 },
   "allow_scenario_entries": false,
   "evidence_retention_days": 90

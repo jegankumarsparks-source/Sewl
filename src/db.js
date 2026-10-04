@@ -117,6 +117,11 @@ CREATE TABLE IF NOT EXISTS health_events (
 CREATE INDEX IF NOT EXISTS idx_trades_wallet_time ON wallet_trades(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_marks_pos ON position_marks(position_id);
 CREATE INDEX IF NOT EXISTS idx_outbox_state ON telegram_outbox(state, next_attempt_at);
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL, body_md TEXT NOT NULL,
+  created_at TEXT NOT NULL, period TEXT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_open_mint ON paper_positions(experiment_id, mint) WHERE state='OPEN';
 `;
 
