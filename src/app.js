@@ -49,9 +49,9 @@ export function buildApi(db, cfg) {
     },
     signals() {
       return { signals: q(`SELECT s.id, s.mint, s.qualified_at, s.decision, s.rule_version, s.reason_codes_json,
-        b.origin, b.latency_ms, b.candle_start_ms, b.detection_ms, b.entry_ms, b.candle_time_source
+        b.origin, b.latency_ms, (SELECT checks_json FROM risk_assessments ra WHERE ra.id = s.risk_assessment_id) checks_json, b.candle_start_ms, b.detection_ms, b.entry_ms, b.candle_time_source
         FROM signals s LEFT JOIN buy_events b ON b.id = json_extract(s.buy_event_ids_json,'$[0]') ORDER BY s.qualified_at DESC LIMIT 60`)
-        .map(r => ({ ...r, origin: r.origin ?? (r.rule_version === 'momentum-v1' ? 'momentum' : 'whale'), reasons: parse(r.reason_codes_json) ?? [], reason_codes_json: undefined })) };
+        .map(r => ({ ...r, checks: parse(r.checks_json), checks_json: undefined, origin: r.origin ?? (r.rule_version === 'momentum-v1' ? 'momentum' : 'whale'), reasons: parse(r.reason_codes_json) ?? [], reason_codes_json: undefined })) };
     },
     momentum() {
       const cyc = (hours) => one(`SELECT COUNT(*) cycles, COALESCE(SUM(json_extract(detail_json,'$.leads')),0) leads, COALESCE(SUM(json_extract(detail_json,'$.scanned')),0) scanned,

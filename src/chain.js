@@ -80,6 +80,32 @@ export function createdMints(txs, wallet) {
   return out;
 }
 
+// P1: wallet intelligence from the fifoPnl coin rows. All ESTIMATED, fetched-window only.
+const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+export function walletStats(coins, window = {}) {
+  const done = coins.filter(c => c.realized_multiple != null);
+  const wins = done.filter(c => c.realized_multiple > 1).length;
+  const holds = done.filter(c => c.first_buy != null && c.last_sell != null && c.last_sell >= c.first_buy).map(c => c.last_sell - c.first_buy);
+  let cum = 0; const curve = done.filter(c => c.last_sell != null).sort((a, b) => a.last_sell - b.last_sell).map(c => { cum += c.realized_pnl_sol; return { time: c.last_sell, cum_pnl_sol: +cum.toFixed(6), mint: c.mint }; });
+  return { win_rate: done.length ? +(wins / done.length).toFixed(3) : null, wins, losses: done.length - wins, sample: done.length,
+    median_hold_s: median(holds), hold_sample: holds.length, curve, first_seen: window.oldest ?? null, mints_traded: coins.length,
+    label: 'ESTIMATED: from SOL-quoted swaps in the latest 100 transactions only; a coin counts once, at its last sell.' };
+}
+export function walletTags(stats, { solBalance = null, created = [] } = {}) {
+  const t = []; const dead = created.filter(c => c.status === 'DEAD_OR_RUGGED_HEURISTIC').length;
+  if (created.length >= 3 && dead / created.length >= 0.6) t.push({ tag: 'Serial rugger?', kind: 'bad', why: `${dead} of ${created.length} created coins look dead (heuristic)` });
+  else if (created.length) t.push({ tag: 'Dev-adjacent', kind: 'warn', why: `created ${created.length} coin(s) in the fetched window` });
+  if ((solBalance ?? 0) >= 1000) t.push({ tag: 'Whale', kind: 'ok', why: `${solBalance} SOL balance` });
+  if (stats.hold_sample >= 3 && stats.median_hold_s >= 86400) t.push({ tag: 'Diamond hands', kind: 'ok', why: `median hold ${(stats.median_hold_s / 3600).toFixed(0)} h over ${stats.hold_sample} coins` });
+  if (stats.hold_sample >= 3 && stats.median_hold_s <= 300) t.push({ tag: 'Flipper', kind: 'warn', why: `median hold ${Math.round(stats.median_hold_s)} s over ${stats.hold_sample} coins` });
+  return t; // Sniper / Insider need first-block and creator-link data we do not have: never guessed.
+}
+// Constant-product approximation: quote reserve ~ half of the DEX Screener liquidity. ESTIMATE, not a quote.
+export function copyImpact(liquidityUsd, sizeUsd = 20) {
+  const L = Number(liquidityUsd); if (!Number.isFinite(L) || L <= 0) return null;
+  const r = L / 2; return { size_usd: sizeUsd, est_impact_pct: +(sizeUsd / (r + sizeUsd) * 100).toFixed(2), label: 'ESTIMATE: constant-product approximation from current liquidity, one-way. The real gate uses a live $20 sell quote.' };
+}
+
 export class Chain {
   constructor({ helius, dex, now = () => Date.now(), maxPerMinute = 30 }) { this.h = helius; this.dex = dex; this.now = now; this.cache = new Map(); this.calls = []; this.maxPerMinute = maxPerMinute; }
   async cached(key, ttlMs, fn) {
@@ -114,7 +140,7 @@ export class Chain {
         decimals: dec, supply_raw: supplyRaw == null ? null : String(supplyRaw), token_program: a?.token_info?.token_program ?? null,
         market: best ? { source: 'DEXSCREENER', price_usd: best.priceUsd ?? null, change_5m: best.priceChange?.m5 ?? null, change_1h: best.priceChange?.h1 ?? null, change_6h: best.priceChange?.h6 ?? null, change_24h: best.priceChange?.h24 ?? null,
           volume_24h_usd: best.volume?.h24 ?? null, volume_1h_usd: best.volume?.h1 ?? null, liquidity_usd: best.liquidity?.usd ?? null, market_cap_usd: best.marketCap ?? null, fdv_usd: best.fdv ?? null, pair: best.pairAddress ?? null, dex: best.dexId ?? null, pool_created_ms: best.pairCreatedAt ?? null, txns_h1: best.txns?.h1 ?? null } : null,
-        audit: auditMint(acct?.value), liquidity_note: 'Pool age and liquidity from DEX Screener. Sell-quote health is not re-checked in the app; see the signal gate checklist.',
+        copy_impact: copyImpact(best?.liquidity?.usd), audit: auditMint(acct?.value), liquidity_note: 'Pool age and liquidity from DEX Screener. Sell-quote health is not re-checked in the app; see the signal gate checklist.',
         creator: first.c ? { ...first.c, source: 'ON-CHAIN: fee payer of the earliest transaction touching the mint' } : null,
         trades: trades.sort((a, b) => b.time - a.time).slice(0, 60), trades_note: 'Latest swaps touching this mint (SOL-quoted, supported venues), parsed from raw on-chain transactions.', holders, holders_note: holders ? 'Top token accounts from RPC; owner = wallet owning the account. Pool/curve accounts are included.' : null };
     });
@@ -136,7 +162,7 @@ export class Chain {
       const created = created0.map(c => { const p = cp.get(c.mint); const liq = p?.liquidity?.usd ?? null; return { ...c, symbol: p?.baseToken?.symbol ?? null, liquidity_usd: liq, market_cap_usd: p?.marketCap ?? null, status: p == null ? 'NO_PAIR_FOUND' : liq != null && liq < 1000 ? 'DEAD_OR_RUGGED_HEURISTIC' : 'ACTIVE', status_note: 'HEURISTIC from DEX Screener liquidity (<$1000 or no pair); not proof of a rug.' }; });
       return { wallet: addr, sol_balance: bal?.value == null ? null : lam(bal.value), last_active: times.length ? Math.max(...times) : null, history_window: { txs: txs.length, oldest: times.length ? Math.min(...times) : null, newest: times.length ? Math.max(...times) : null, note: 'Most recent 100 transactions only; older activity is not included.' },
         holdings: hold, holdings_note: 'Token balances from RPC. Values are ESTIMATES at the DEX Screener price; unpriced coins show null.',
-        coins: pnl.coins.slice(0, 80), pnl: pnl.summary, skipped_non_sol_trades: skippedNonSol, txs_parsed: parsed, created_coins: created, created_note: 'Pump.fun coins this wallet created within its latest 100 transactions only.' };
+        coins: pnl.coins.slice(0, 80), pnl: pnl.summary, stats: walletStats(pnl.coins, { oldest: times.length ? Math.min(...times) : null }), tags: walletTags(walletStats(pnl.coins), { solBalance: bal?.value == null ? null : lam(bal.value), created }), skipped_non_sol_trades: skippedNonSol, txs_parsed: parsed, created_coins: created, created_note: 'Pump.fun coins this wallet created within its latest 100 transactions only.' };
     });
   }
 }
