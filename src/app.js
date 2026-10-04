@@ -6,6 +6,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { latencyStats } from './momentum.js';
+import { createHash, timingSafeEqual } from 'node:crypto';
+const safeEq = (a, b) => timingSafeEqual(createHash('sha256').update(String(a)).digest(), createHash('sha256').update(String(b)).digest());
 
 const ROOT = path.resolve('app');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -104,7 +106,7 @@ export function startApp(cfg, { file = 'var/sewl.sqlite' } = {}) {
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, { error: 'read-only app: GET only' });
     if (pw) {
       const got = (req.headers.authorization ?? '').startsWith('Basic ') ? Buffer.from(req.headers.authorization.slice(6), 'base64').toString().split(':').slice(1).join(':') : null;
-      if (got !== pw) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="SEWL"' }); return res.end('auth required'); }
+      if (got === null || !safeEq(got, pw)) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="SEWL"' }); return res.end('auth required'); }
     }
     const url = new URL(req.url, 'http://x'); const p = url.pathname;
     try {
