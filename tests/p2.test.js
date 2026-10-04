@@ -57,3 +57,8 @@ test('snapshots include the P2 pages and still hold no secrets', async () => {
   assert.equal(r.rejected.length, 0);
   assert.ok(!readFileSync(path.join(dir, 'journal.json'), 'utf8').includes('evidence'), 'no evidence payloads in snapshots');
 });
+test('health exposes per-source credits and weekly narrative stays row-derived', async () => {
+  const { file, db } = seed(); db.prepare(`INSERT INTO helius_usage_source (month, source, credits) VALUES (?,?,?)`).run(new Date().toISOString().slice(0, 7), 'whale-history', 42);
+  const srv = startApp(cfg, { file }); const base = `http://127.0.0.1:${await listen(srv)}`;
+  try { const h = await (await fetch(`${base}/api/health`)).json(); assert.deepEqual(h.helius.by_source, { 'whale-history': 42 }); } finally { srv.close(); }
+});
