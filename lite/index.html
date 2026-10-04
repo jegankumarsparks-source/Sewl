@@ -137,7 +137,6 @@ async function scan(){
   const profs=await ds('/token-profiles/latest/v1').catch(()=>[]);
   const mints=[...new Set([...boosts,...profs].filter(x=>x.chainId==='solana').map(x=>x.tokenAddress))].slice(0,24);
   if(!mints.length){$('scanT').textContent='No leads from DEX Screener — retrying in 60s';scanning=false;return}
-  const pairs=(await ds('/token-pairs/v1/solana/'+mints.slice(0,24).join(','))).catch?null:null;
   const pr=await ds('/token-pairs/v1/solana/'+mints.slice(0,24).join(','));
   let hits=0,ev=0;
   for(const p of (pr||[])){
