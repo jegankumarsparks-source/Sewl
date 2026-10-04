@@ -1,0 +1,21 @@
+import { Quota } from '../rpc.js';
+import { recordObservation } from '../evidence.js';
+
+const BASE = 'https://api.dexscreener.com';
+export class Dexscreener {
+  constructor({ db, quota = new Quota(25, 60_000) }) { this.db = db; this.quota = quota; }
+  async get(path) {
+    await this.quota.take();
+    const requestedAt = new Date().toISOString();
+    const res = await fetch(BASE + path, { headers: { accept: 'application/json' } });
+    const j = await res.json().catch(() => null);
+    const evidenceId = recordObservation(this.db, { provider: BASE, method: 'GET ' + path, requestedAt, body: j, httpStatus: res.status, status: res.ok ? 'OK' : 'ERROR' });
+    if (!res.ok) throw new Error('dexscreener ' + res.status);
+    return { data: j, evidenceId };
+  }
+  tokenPairs(mints) { return this.get(`/token-pairs/v1/solana/${Array.isArray(mints) ? mints.slice(0, 30).join(',') : mints}`); }
+  pair(pairAddress) { return this.get(`/latest/dex/pairs/solana/${pairAddress}`); }
+  // Promotional leads only - NOT quality evidence.
+  latestBoosts() { return this.get('/token-boosts/latest/v1'); }
+  latestProfiles() { return this.get('/token-profiles/latest/v1'); }
+}

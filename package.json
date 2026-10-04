@@ -1,0 +1,20 @@
+{
+  "name": "solana-early-wallet-lab",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SEWL - evidence-first Solana early-wallet paper trading research pilot (paper money only, no real funds)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "init": "node scripts/init-db.js",
+    "start": "node src/main.js",
+    "once": "node src/main.js once",
+    "discover": "node src/main.js discover",
+    "watch": "node src/main.js watch",
+    "mark": "node src/main.js mark",
+    "flush": "node src/main.js flush",
+    "test": "node --test tests/paper.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0"
+  }
+}

@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SEWL - Solana Early Wallet Lab (PAPER)</title>
+<style>
+:root{--bg:#0b1020;--card:#141b34;--line:#26305a;--tx:#e8ecff;--mut:#8f9bc7;--ok:#3ddc97;--warn:#ffb84d;--bad:#ff6b6b;--acc:#7c5cff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 10% -10%,#1b2450,transparent),var(--bg);color:var(--tx);font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:6px 0}h2{font-size:15px;margin:0 0 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.banner{background:#3a2a10;border:1px solid var(--warn);color:#ffe2b0;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.big{font-size:26px;font-weight:700}.mut{color:var(--mut);font-size:13px}
+.bar{height:10px;background:#0c1228;border-radius:8px;overflow:hidden;margin-top:8px}.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--ok))}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;word-break:break-all}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;border:1px solid var(--line);font-size:12px}
+.OK,.INFO{color:var(--ok)}.WARN{color:var(--warn)}.ERROR{color:var(--bad)}
+footer{color:var(--mut);font-size:12px;margin:18px 0}
+</style></head><body><div class="wrap">
+<h1>SEWL <span class="mut">Solana Early Wallet Lab</span></h1>
+<div class="banner" id="banner">Loading...</div>
+<div class="grid" id="top"></div>
+<div class="card" style="margin-top:12px"><h2>Progress to target (latch)</h2><div id="prog" class="mut">...</div><div class="bar"><i id="barfill" style="width:0%"></i></div></div>
+<div class="grid" style="margin-top:12px">
+<div class="card"><h2>Wallets</h2><div id="wallets"></div></div>
+<div class="card"><h2>Signals</h2><div id="signals"></div></div>
+<div class="card"><h2>Positions</h2><div id="pos"></div></div>
+<div class="card"><h2>Alerts outbox</h2><div id="outbox"></div></div></div>
+<div class="card" style="margin-top:12px"><h2>Recent signals</h2><div id="rs" class="mut">none yet</div></div>
+<div class="card" style="margin-top:12px"><h2>Open and closed paper positions</h2><div id="plist" class="mut">none yet</div></div>
+<div class="card" style="margin-top:12px"><h2>Health</h2><div id="health"></div></div>
+<div class="card" style="margin-top:12px"><h2>Honest limits</h2><ul id="limits" class="mut"></ul></div>
+<footer id="foot"></footer></div>
+<script>
+const $=id=>document.getElementById(id),f=v=>v==null?'N/A':v,usd=v=>v==null?'N/A':'$'+Number(v).toFixed(2);
+const list=(a,k,v)=>a&&a.length?a.map(r=>`<div><span class="pill">${r[k]}</span> ${r[v]}</div>`).join(''):'<span class="mut">none yet</span>';
+fetch('data.json?'+Date.now()).then(r=>r.json()).then(d=>{
+$('banner').textContent=d.banner;const e=d.experiment||{},a=d.account||{};
+$('top').innerHTML=`<div class="card"><h2>State</h2><div class="big">${f(e.state)}</div><div class="mut">${f(e.name)}</div></div>
+<div class="card"><h2>Paper cash</h2><div class="big">${usd(a.cash_usd)}</div><div class="mut">start ${usd(e.starting_cash_usd)}</div></div>
+<div class="card"><h2>Equity</h2><div class="big">${usd(a.equity_usd)}</div><div class="mut">${a.equity_note}</div></div>
+<div class="card"><h2>Realized P&amp;L</h2><div class="big">${usd(a.realized_pnl_usd)}</div><div class="mut">unrealized ${usd(a.unrealized_pnl_usd)}</div></div>`;
+const eq=a.equity_usd==null?null:Number(a.equity_usd),t=Number(e.target_equity_usd||800);
+$('prog').textContent=eq==null?'Equity not exactly known yet (NOT EXACT). Target '+usd(t)+' is a latch, not a promise.':usd(eq)+' of '+usd(t)+' target ('+(eq/t*100).toFixed(1)+'%)';
+$('barfill').style.width=eq==null?'0%':Math.max(0,Math.min(100,eq/t*100))+'%';
+$('wallets').innerHTML=list(d.counts.wallets_by_status,'status','n');$('signals').innerHTML=list(d.counts.signals_by_decision,'decision','n')+`<div class="mut">buy events seen: ${d.counts.buy_events}</div>`;
+$('pos').innerHTML=list(d.counts.positions_by_state,'state','n');$('outbox').innerHTML=list(d.counts.outbox_by_state,'state','n');
+if(d.recent_signals.length)$('rs').innerHTML='<table>'+d.recent_signals.map(s=>`<tr><td>${s.qualified_at}</td><td>${s.mint}</td><td>${s.decision}</td></tr>`).join('')+'</table>';
+if(d.positions.length)$('plist').innerHTML='<table>'+d.positions.map(p=>`<tr><td>${p.entry_at}</td><td>${p.mint}</td><td>${usd(p.entry_total_usd)}</td><td>${p.state}</td></tr>`).join('')+'</table>';
+$('health').innerHTML=d.health.length?'<table>'+d.health.map(h=>`<tr><td>${h.at}</td><td>${h.component}</td><td class="${h.severity}">${h.severity}</td><td>${h.code}</td></tr>`).join('')+'</table>':'<span class="mut">no health events (none recorded)</span>';
+$('limits').innerHTML=d.limits.map(x=>`<li>${x}</li>`).join('');
+$('foot').textContent='Generated '+d.generated_at+' | last data fetch '+f(d.counts.last_observation_at)+' | read-only snapshot, one publish per cycle';
+}).catch(e=>{$('banner').textContent='Data not available yet (UNVERIFIED): '+e});
+</script></body></html>
