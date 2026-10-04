@@ -7,6 +7,8 @@ services:
     startCommand: bash scripts/render-start.sh
     healthCheckPath: /
     envVars:
+      - key: NODE_VERSION
+        value: "22.12.0"
       - key: SEWL_APP_PORT
         value: "10000"
       - key: EXIT_POLICY_APPROVED
