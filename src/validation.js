@@ -24,6 +24,16 @@ export function decodeMint(account) {
   return { ok: true, mintAuth, supply, decimals, freeze, extensions };
 }
 
+// Token-2022 ExtensionType ids verified against the official spl token-2022 interface enum
+// (solana-program/token-2022 interface/src/extension/mod.rs, sequential from Uninitialized=0):
+// 18 = MetadataPointer, 19 = TokenMetadata. Frozen allowlist: exactly these two. Anything else,
+// including unknown or future ids, is rejected.
+export const EXTENSION_ALLOWLIST = Object.freeze({ 18: 'metadata_pointer', 19: 'token_metadata' });
+export function extensionVerdict(extensions) {
+  const blocked = extensions.filter(e => !(e.type in EXTENSION_ALLOWLIST)).map(e => e.type);
+  return { pass: blocked.length === 0, blocked };
+}
+
 export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
   const checks = {}; const evidenceIds = []; const unknown = [];
   let result = 'QUALIFIED';
@@ -38,7 +48,10 @@ export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
   if (!dec.ok) { checks.identity = 'FAIL'; return finish(db, mint, checks, evidenceIds, unknown, 'REJECTED'); }
   checks.mint_authority_null = dec.mintAuth === null ? 'PASS' : 'FAIL';
   checks.freeze_authority_null = dec.freeze === null ? 'PASS' : 'FAIL';
-  checks.extensions_none = dec.extensions.length === 0 ? 'PASS' : 'FAIL';
+  const ev = extensionVerdict(dec.extensions);
+  checks.extensions_allowlist = ev.pass ? 'PASS' : 'FAIL';
+  checks.extensions_decoded = dec.extensions.map(e => ({ type: e.type, len: e.len, name: EXTENSION_ALLOWLIST[e.type] ?? null }));
+  for (const id of ev.blocked) checks[`extension-type-${id}`] = 'FAIL';
   db.prepare(`INSERT INTO tokens (mint, token_program, decimals, supply_raw, mint_authority, freeze_authority, extensions_json, first_observed_at, last_chain_evidence_id)
     VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(mint) DO UPDATE SET mint_authority=excluded.mint_authority, freeze_authority=excluded.freeze_authority, extensions_json=excluded.extensions_json, last_chain_evidence_id=excluded.last_chain_evidence_id`)
     .run(mint, prog, dec.decimals, dec.supply, dec.mintAuth, dec.freeze, JSON.stringify(dec.extensions), nowIso(), ai.evidenceId);
@@ -90,6 +103,8 @@ export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
       checks.sellability = 'PASS';
     } catch { checks.sellability = 'UNKNOWN'; unknown.push('sell-quote-unavailable'); if (result === 'QUALIFIED') result = 'DATA_INCOMPLETE'; }
   }
+  // Any definitive FAIL (authority, extension, concentration, liquidity, sellability) rejects the token; direct check assignments above do not set result themselves.
+  if (Object.values(checks).includes('FAIL')) result = 'REJECTED';
   return finish(db, mint, checks, evidenceIds, unknown, result, { liquidity: liq, price, decimals: dec.decimals });
 }
 
