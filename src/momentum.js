@@ -81,7 +81,7 @@ export async function momentumCycle(db, deps) {
   const mints = [...leads].slice(0, Number(cfg.momentum.max_leads_per_cycle));
   if (!mints.length) return { leads: 0, scanned: 0, triggered: 0 };
   let pairs = [];
-  try { pairs = (await dex.tokenPairs(mints)).data ?? []; } catch { return { leads: mints.length, scanned: 0, error: 'pairs-fetch-failed' }; }
+  try { pairs = (await dex.tokensBatch(mints)).data ?? []; } catch { return { leads: mints.length, scanned: 0, error: 'pairs-fetch-failed' }; }
   // best (highest-liquidity) solana pair per base token
   const best = new Map();
   for (const p of pairs) if (p.chainId === 'solana' && p.baseToken?.address) {

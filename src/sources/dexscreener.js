@@ -23,6 +23,8 @@ export class Dexscreener {
     return { data: j, evidenceId };
   }
   tokenPairs(mints) { return this.get(`/token-pairs/v1/solana/${Array.isArray(mints) ? mints.slice(0, 30).join(',') : mints}`); }
+  // batch: up to 30 token addresses in one call (the token-pairs endpoint takes ONE token)
+  tokensBatch(mints) { return this.get(`/tokens/v1/solana/${mints.slice(0, 30).join(',')}`); }
   pair(pairAddress) { return this.get(`/latest/dex/pairs/solana/${pairAddress}`); }
   // Promotional leads only - NOT quality evidence.
   latestBoosts() { return this.get('/token-boosts/latest/v1'); }
