@@ -78,3 +78,21 @@ export function firstSwapMs(swaps, windowStartSec) {
   const ts = swaps.filter(s => Number.isFinite(s.timestamp) && s.timestamp >= windowStartSec && !s.transactionError).map(s => s.timestamp);
   return ts.length ? Math.min(...ts) * 1000 : null;
 }
+
+// Generic guarded read-only JSON-RPC (Helius). Cost is charged against the monthly cap BEFORE the call.
+// Costs are conservative estimates from the Helius billing page (standard RPC 1, DAS and history 10); UNVERIFIED per method until the dashboard Usage page is read.
+export const RPC_COST = { getAsset: 10, getTokenLargestAccounts: 10, getTokenAccountsByOwner: 10, getMultipleAccounts: 1, getBalance: 1, getTransactionsForAddress: 10 };
+Helius.prototype.rpc = async function (method, params, { timeoutMs = 8000, cost = RPC_COST[method] ?? 10 } = {}) {
+  if (!this.enabled) throw new Error('helius-disabled');
+  this.guard(cost);
+  await this.quota.take();
+  const requestedAt = new Date().toISOString();
+  let res, j;
+  try {
+    res = await this.fetch(`https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(this.apiKey)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(timeoutMs), body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
+    j = await res.json().catch(() => null);
+  } catch (e) { throw new Error('helius ' + ((e.name === 'TimeoutError' || e.name === 'AbortError') ? 'TIMEOUT' : 'FETCH_FAILED')); }
+  if (!res.ok || j?.error || j?.result === undefined) throw new Error('helius-rpc ' + (j?.error?.message ?? res.status).toString().slice(0, 80));
+  recordObservation(this.db, { provider: 'helius-rpc', method: `POST ${method}`, subject: String(Array.isArray(params) ? params[0] : params?.id ?? '').slice(0, 60), requestedAt, body: { ok: true }, httpStatus: res.status, status: 'OK' });
+  return j.result;
+};

@@ -92,13 +92,13 @@ export function buildApi(db, cfg) {
   };
 }
 
-export function startApp(cfg, { file = 'var/sewl.sqlite' } = {}) {
+export function startApp(cfg, { file = 'var/sewl.sqlite', chain = null, gecko = null, state = null } = {}) {
   const a = cfg.app ?? {};
   if (!a.enabled) return null;
   const db = new Database(file, { readonly: true, fileMustExist: true });
   const api = buildApi(db, cfg);
   const pw = process.env.SEWL_APP_PASSWORD;
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const send = (code, body, type = 'application/json; charset=utf-8') => {
       res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
       res.end((typeof body === 'string' || Buffer.isBuffer(body)) ? body : JSON.stringify(body));
@@ -112,6 +112,10 @@ export function startApp(cfg, { file = 'var/sewl.sqlite' } = {}) {
     try {
       if (p.startsWith('/api/')) {
         const m = p.slice(5).split('/');
+        if (m[0] === 'markets') return send(200, { source: 'worker scan (DEX Screener pairs for the current lead set)', at: state?.lastPairsAt ?? null, coins: state?.lastPairs ?? [] });
+        if (m[0] === 'coin' && m[1]) { if (!chain) return send(503, { error: 'chain data unavailable (no Helius key)' }); try { return send(200, await chain.coin(m[1])); } catch (e) { return send(e.message === 'bad-address' ? 400 : e.message === 'rate-limited' ? 429 : 502, { error: String(e.message).slice(0, 100) }); } }
+        if (m[0] === 'wallet' && m[1]) { if (!chain) return send(503, { error: 'chain data unavailable (no Helius key)' }); try { return send(200, await chain.wallet(m[1])); } catch (e) { return send(e.message === 'bad-address' ? 400 : e.message === 'rate-limited' ? 429 : 502, { error: String(e.message).slice(0, 100) }); } }
+        if (m[0] === 'ohlcv' && m[1]) { if (!gecko) return send(503, { error: 'candles unavailable' }); try { return send(200, await gecko.ohlcv(m[1], url.searchParams.get('tf') ?? '1m')); } catch (e) { return send(e.message.startsWith('bad-') ? 400 : e.message === 'rate-limited' ? 429 : 502, { error: String(e.message).slice(0, 100) }); } }
         if (m[0] === 'reports' && m[1]) { const r = api.reports(Number(m[1])); return r ? send(200, r) : send(404, { error: 'not found' }); }
         if (['dashboard', 'signals', 'momentum', 'wallets', 'evidence', 'health', 'reports'].includes(m[0]) && m.length === 1) return send(200, api[m[0]]());
         return send(404, { error: 'not found' });

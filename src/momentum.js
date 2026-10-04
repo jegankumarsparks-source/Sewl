@@ -123,6 +123,9 @@ export async function momentumCycle(db, deps) {
     const cur = best.get(p.baseToken.address);
     if (!cur || (num(p.liquidity?.usd) ?? 0) > (num(cur.liquidity?.usd) ?? 0)) best.set(p.baseToken.address, p);
   }
+  state.lastPairsAt = new Date().toISOString();
+  state.lastPairs = [...best.values()].map(p => ({ mint: p.baseToken.address, name: p.baseToken.name ?? null, symbol: p.baseToken.symbol ?? null, price_usd: p.priceUsd ?? null, change_5m: p.priceChange?.m5 ?? null, change_1h: p.priceChange?.h1 ?? null,
+    volume_1h_usd: p.volume?.h1 ?? null, liquidity_usd: p.liquidity?.usd ?? null, market_cap_usd: p.marketCap ?? null, pool_created_ms: p.pairCreatedAt ?? null, pair: p.pairAddress ?? null, from_helius: !dexLeads.has(p.baseToken.address) }));
   let triggered = 0, opened = 0;
   for (const p of best.values()) {
     if (!evaluateTrigger(p, cfg).trigger) continue;

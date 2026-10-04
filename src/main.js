@@ -1,6 +1,8 @@
 import { momentumCycle } from './momentum.js';
 import { startApp } from './app.js';
 import { Helius } from './sources/helius.js';
+import { Chain } from './chain.js';
+import { GeckoTerminal } from './sources/geckoterminal.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
 import { Rpc, Quota } from './rpc.js';
@@ -152,7 +154,7 @@ async function loop(name, seconds, fn) {
   }
 }
 loop('momentum', cfg.momentum?.cycle_seconds ?? 60, async () => { if (!cfg.momentum?.enabled) return; const r = await momentumCycle(db, deps); health('momentum', 'INFO', 'momentum-cycle', r); });
-try { const srv = startApp(cfg); if (srv) health('worker', 'INFO', 'app-listening', { host: process.env.SEWL_APP_HOST ?? cfg.app.host, port: process.env.SEWL_APP_PORT ?? cfg.app.port }); } catch (e) { health('worker', 'WARN', 'app-start-failed', { e: String(e).slice(0, 150) }); }
+try { const srv = startApp(cfg, { chain: helius.enabled ? new Chain({ helius, dex }) : null, gecko: new GeckoTerminal(), state: deps.leadState ??= { cycle: 0 } }); if (srv) health('worker', 'INFO', 'app-listening', { host: process.env.SEWL_APP_HOST ?? cfg.app.host, port: process.env.SEWL_APP_PORT ?? cfg.app.port }); } catch (e) { health('worker', 'WARN', 'app-start-failed', { e: String(e).slice(0, 150) }); }
 loop('discovery', cfg.discovery_cadence_minutes * 60, discoverCycle);
 loop('history', 300, historyCycle);
 loop('watch', cfg.poll_seconds, watchCycle);
