@@ -5,7 +5,8 @@ export const PROGRAM_IDS = {
   RAYDIUM_CLMM: 'CAMMCzo5YL8w4VFF8KVHrK22GGUQo2mHUpZWMkjyGPdQ',
   RAYDIUM_CPMM: 'CPMMoo8L3F4NbTegBCKVNubggq1KL5sz6V4EVRFQh5ej',
   ORCA_WHIRLPOOL: 'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc',
-  PUMP_FUN: '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P'
+  PUMP_FUN: '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',
+  PUMP_AMM: 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA'
 };
 const SOL = 'So11111111111111111111111111111111111111112';
 const USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -36,13 +37,14 @@ export function parseSwap(tx, parserVersion = 'owner-delta-v1') {
   for (const k of [...Object.keys(preT), ...Object.keys(postT)]) owners.add(k.split('|')[0]);
   const trades = [];
   for (const owner of owners) {
-    const native = (postN[owner] || 0n) - (preN[owner] || 0n);
+    // SOL flow = native lamports delta + wrapped-SOL token delta (PumpSwap/Raydium pay with wSOL, so native alone is just fees)
+    const native = ((postN[owner] || 0n) - (preN[owner] || 0n)) + ((postT[owner + '|' + SOL] || 0n) - (preT[owner + '|' + SOL] || 0n));
     const mints = new Set();
     for (const k of [...Object.keys(preT), ...Object.keys(postT)]) if (k.startsWith(owner + '|')) mints.add(k.split('|')[1]);
     const usdcOut = (preT[owner + '|' + USDC] || 0n) - (postT[owner + '|' + USDC] || 0n);
     const usdcIn = (postT[owner + '|' + USDC] || 0n) - (preT[owner + '|' + USDC] || 0n);
     for (const mint of mints) {
-      if (mint === USDC) continue;
+      if (mint === USDC || mint === SOL) continue;
       const delta = (postT[owner + '|' + mint] || 0n) - (preT[owner + '|' + mint] || 0n);
       if (delta > 0n) {
         let quoteMint = null, quoteRaw = 0n;
