@@ -34,7 +34,7 @@ const P2 = {
   cockpit,
   async journal() {
     const d = await get('journal'); const ic = { signal: '&#9889;', entry: '&#9654;', exit: '&#9632;', event: '&#9888;' };
-    $('#view').innerHTML = `<a class="link" href="#/activity">&larr; Back</a>` + head('Decision journal', 'Every decision, entry, exit and notable event, newest first') + banner + (d.entries.map((e) => `<div class="card jr" ${tip('row id ' + (e.ref ?? ''))}><div class="row" style="padding:0;border:0"><span>${ic[e.kind] ?? ''} <b>${esc(e.title)}</b></span><span class="sub">${ago(e.at)}</span></div>${e.mint ? `<a class="mono link" href="#/coin/${esc(e.mint)}">${esc(short(e.mint))}</a>` : ''}<div class="sub">${esc(e.at)} ${esc(e.detail ?? '')}</div></div>`).join('') || '<div class="card empty">Nothing recorded yet.</div>') + `<div class="sub" style="padding:8px">${esc(d.note)}</div>`;
+    $('#view').innerHTML = `<a class="link" href="#/activity">&larr; Back</a>` + head('Decision journal', 'Every decision, entry, exit and notable event, newest first') + banner + (d.entries.map((e) => `<div class="card jr" ${tip('row id ' + (e.ref_id ?? ''))}><div class="row" style="padding:0;border:0"><span>${ic[e.kind] ?? ''} <b>${esc(e.title)}</b></span><span class="sub">${ago(e.at)}</span></div>${e.mint ? `<a class="mono link" href="#/coin/${esc(e.mint)}">${esc(short(e.mint))}</a>` : ''}<div class="sub">${esc(e.at)} ${esc(e.detail ?? '')}</div></div>`).join('') || '<div class="card empty">Nothing recorded yet.</div>') + `<div class="sub" style="padding:8px">${esc(d.note)}</div>`;
   },
   async lab() {
     const d = await get('lab'); const f = d.frozen;

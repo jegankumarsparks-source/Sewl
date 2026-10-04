@@ -49,6 +49,7 @@ test('evidence verify route: payload hash matches the stored hash; bad ids, trav
 });
 test('snapshots include the P2 pages and still hold no secrets', async () => {
   const { db, d } = seed(); const dir = path.join(d, 'site', 'snap');
+  db.prepare(`INSERT INTO paper_positions (id, experiment_id, signal_id, mint, entry_at, entry_total_usd, state, origin) VALUES ('aaaaaaaa-1111-4111-8111-bbbbbbbbbbbb','exp-1',NULL,'MINT2',?,'20','OPEN','momentum')`).run(new Date().toISOString());
   const r = await writeSnapshots({ db, cfg, state: {}, dir, sleep: async () => {}, secrets: ['SUPERSECRETVALUE123'] });
   for (const f of ['pnl.json', 'journal.json', 'weekly.json', 'lab.json', 'health.json']) assert.ok(r.written.includes(f), f);
   assert.equal(r.rejected.length, 0);
