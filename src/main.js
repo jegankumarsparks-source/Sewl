@@ -147,7 +147,7 @@ async function loop(name, seconds, fn) {
     await new Promise(r => setTimeout(r, seconds * 1000));
   }
 }
-loop('momentum', cfg.momentum?.cycle_seconds ?? 60, async () => { if (cfg.momentum?.enabled) await momentumCycle(db, deps); });
+loop('momentum', cfg.momentum?.cycle_seconds ?? 60, async () => { if (!cfg.momentum?.enabled) return; const r = await momentumCycle(db, deps); health('momentum', 'INFO', 'momentum-cycle', r); });
 loop('discovery', cfg.discovery_cadence_minutes * 60, discoverCycle);
 loop('history', 300, historyCycle);
 loop('watch', cfg.poll_seconds, watchCycle);
