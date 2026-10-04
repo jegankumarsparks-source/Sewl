@@ -18,7 +18,7 @@ export class Outbox {
       case 'signal': {
         const m = esc(p.mint), sol = (s) => s == null ? null : String(s);
         const lines = [`🟢 PAPER ENTRY - ${esc(p.name)}${p.symbol ? ' ($' + esc(p.symbol) + ')' : ''}`, 'Contract (tap to copy):', `<code>${m}</code>`,
-          `Links: <a href="https://gmgn.ai/sol/token/${m}">GMGN</a> | <a href="https://web3.binance.com/en/token/solana/${m}">Binance</a> | <a href="https://dexscreener.com/solana/${m}">Dexscreener</a>`];
+          `Links: <a href="https://gmgn.ai/sol/token/${m}">GMGN</a> | <a href="https://dexscreener.com/solana/${m}">Dexscreener</a>`];
         if (p.entry_at) lines.push(`Entry time: ${esc(p.entry_at)}`);
         if (p.notional) lines.push(`Paper size: $${esc(p.notional)}`);
         if (p.wallet) lines.push(`Wallet: <code>${esc(p.wallet)}</code>`);
