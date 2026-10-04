@@ -23,7 +23,6 @@ function post(db, eventType, referenceId, lines) {
   lines.forEach((l, i) => {
     ins.run(txId, i, l.account, l.debit, l.credit);
     db.prepare(`INSERT INTO accounts (name, balance_usd) VALUES (?, '0') ON CONFLICT(name) DO NOTHING`).run(l.account);
-    const bal = db.prepare(`SELECT balance_usd FROM accounts WHERE name=?`).get(l.account).balance_usd;
     const balRow = db.prepare(`SELECT balance_usd FROM accounts WHERE name=?`).get(l.account);
     if ((l.account === 'cash' || l.account.startsWith('position_cost')) &&
         cmp(d(balRow.balance_usd) + d(l.debit) - d(l.credit), 0n) < 0) throw new Error('negative balance: ' + l.account);

@@ -2,7 +2,6 @@
   "name": "SEWL $500 paper",
   "mode_note": "PAPER TRADING ONLY. No signing key, no real funds. $800 is a target latch, not a promise.",
   "mode": "concurrent",
-  "mode_note": "concurrent = up to 10 open $50 positions (original). rotation = 1 position at a time, max 12 coins total, TP 1.5X, SL 50%.",
   "rotation": {
     "max_positions": 1,
     "max_total_entries": 12,
