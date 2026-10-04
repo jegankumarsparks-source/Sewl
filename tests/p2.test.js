@@ -17,6 +17,7 @@ function seed() {
   const now = new Date().toISOString();
   for (let i = 0; i < 3; i++) db.prepare(`INSERT INTO health_events (id, component, at, severity, code, detail_json) VALUES (?,?,?,?,?,?)`).run('hc' + i, 'momentum', now, 'INFO', 'momentum-cycle', '{"leads":10,"scanned":9,"triggered":1,"opened":0}');
   db.prepare(`INSERT INTO health_events (id, component, at, severity, code, detail_json) VALUES ('hs','worker',?,'WARN','loop-stalled','{"last_done_age_s":900}')`).run(now);
+  db.prepare(`INSERT INTO risk_assessments (id, mint, assessed_at, rule_version, result, checks_json, evidence_ids_json, unknown_fields_json) VALUES ('ra1','M',?,'v','REJECTED','{"liquidity":"FAIL","identity":"PASS"}','[]','[]'), ('ra2','M',?,'v','DATA_INCOMPLETE','{"sellability":"UNKNOWN","liquidity":"PASS"}','[]','[]')`).run(now, now);
   db.prepare(`INSERT INTO paper_positions (id, experiment_id, signal_id, mint, entry_at, entry_total_usd, state, origin) VALUES ('p1','exp-1',NULL,'MINT1',?,'20','OPEN','momentum')`).run(now);
   for (const [i, x] of [1.0, 1.2, 1.6].entries()) db.prepare(`INSERT INTO position_marks (id, position_id, marked_at, net_multiple, valuation_state) VALUES (?,?,?,?,'PRICED')`).run('m' + i, 'p1', now.slice(0, 19) + '.00' + i + 'Z', String(x));
   db.prepare(`INSERT INTO milestones (position_id, multiple, first_observed_at, mark_id) VALUES ('p1',1,?,'m2')`).run(now);
@@ -27,6 +28,7 @@ test('P2 API: pnl, journal, weekly, lab, health cockpit come from stored rows on
   try {
     const j = async (p) => (await fetch(`${base}/api/${p}`)).json();
     const w = await j('weekly'); assert.equal(w.facts.cycles, 3); assert.equal(w.facts.leads, 30); assert.equal(w.facts.triggered, 3); assert.equal(w.facts.stalls, 1); assert.match(w.text, /3 cycles/); assert.match(w.text, /cycles completed this week: 3 vs \d+ expected if always-on/); assert.ok(w.facts.cycles_expected >= 0); assert.match(w.text, /not a performance claim/);
+    assert.equal(w.facts.goal.awake_hours, 1); assert.equal(w.facts.goal.awake_pct, 100); assert.equal(w.facts.goal.assessments, 2); assert.deepEqual(w.facts.goal.gate_rejects.liquidity, { FAIL: 1, UNKNOWN: 0 }); assert.deepEqual(w.facts.goal.gate_rejects.sellability, { FAIL: 0, UNKNOWN: 1 }); assert.match(w.text, /Gate rejects: .*liquidity 1 fail/);
     const l = await j('lab'); assert.equal(l.positions[0].series.length, 3); assert.deepEqual(l.positions[0].series.map(s => s.x), [1.0, 1.2, 1.6]);
     const p = await j('pnl'); assert.equal(p.milestones[0].multiple, 1); assert.equal(p.closed_total, 0); assert.deepEqual(p.equity_series, []);
     const jr = await j('journal'); assert.ok(jr.entries.some(e => e.kind === 'entry') && jr.entries.some(e => e.title.startsWith('loop-stalled')));

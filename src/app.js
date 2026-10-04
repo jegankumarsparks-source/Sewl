@@ -111,12 +111,23 @@ export function buildApi(db, cfg) {
       const st = one(`SELECT COUNT(*) n FROM health_events WHERE code='loop-stalled' AND at >= ?`, since).n;
       const pos = one(`SELECT COUNT(*) n FROM paper_positions WHERE entry_at >= ?`, since).n;
       const first = one(`SELECT MIN(at) t FROM health_events WHERE code='momentum-cycle'`).t;
+      // GOAL-PROGRESS (E1 gate-reject distribution, E4 awake time): derived from stored rows only.
+      const ras = q(`SELECT result, checks_json, unknown_fields_json FROM risk_assessments WHERE assessed_at >= ?`, since);
+      const gates = {}; for (const r of ras) { const c = parse(r.checks_json) ?? {}; for (const [k, v] of Object.entries(c)) if (v === 'FAIL' || v === 'UNKNOWN') { const g = (gates[k] ??= { FAIL: 0, UNKNOWN: 0 }); g[v]++; } }
+      const results = {}; for (const r of ras) results[r.result] = (results[r.result] ?? 0) + 1;
+      const hrs = q(`SELECT DISTINCT substr(at,1,13) h FROM health_events WHERE code='momentum-cycle' AND at >= ?`, since).length;
+      const spanH = first ? Math.max(1, Math.ceil((Date.now() - Math.max(Date.parse(first), Date.now() - 7 * 86400_000)) / 3600_000)) : 0;
+      const awake_pct = spanH ? Math.min(100, Math.round(100 * hrs / spanH)) : null;
+      const perDay = spanH ? Math.round((cy.t / spanH) * 24 * 10) / 10 : null;
+      const goal = { triggers_per_day_est: perDay, triggers: cy.t, entries_opened: pos, assessments: ras.length, assessment_results: results, gate_rejects: gates, leads_per_cycle: cy.c ? Math.round(cy.l / cy.c * 10) / 10 : null, awake_hours: hrs, span_hours: spanH, awake_pct };
+      const gtxt = Object.entries(gates).sort((a, b) => (b[1].FAIL + b[1].UNKNOWN) - (a[1].FAIL + a[1].UNKNOWN)).map(([k, v]) => `${k} ${v.FAIL} fail/${v.UNKNOWN} unknown`).join(', ');
       const startMs = Math.max(Date.now() - 7 * 86400_000, first ? Date.parse(first) : Date.now());
       const expected = Math.floor((Date.now() - startMs) / 1000 / Number(cfg.momentum.cycle_seconds));
       const parts = [`Momentum cycles completed this week: ${cy.c} vs ${expected} expected if always-on (${expected > 0 ? Math.round(100 * cy.c / expected) : 'n/a'}% coverage, measured from the first recorded cycle; gaps are host sleep or stops).`, `Window: last 7 days (data exists since ${first ?? 'n/a'}).`, `The scanner ran ${cy.c} cycles, saw ${cy.l} leads and scanned ${cy.s}.`, `${cy.t} coin(s) met the surge trigger and ${cy.o} paper entr${cy.o === 1 ? 'y was' : 'ies were'} opened.`,
         sg.length ? 'Signal decisions: ' + sg.map(x => `${x.n} ${x.decision}`).join(', ') + '.' : 'No signals were recorded.', `${pos} paper position(s) opened. ${st} loop-stall warning(s), usually the host sleeping rather than a hang.`,
+        `Goal progress: about ${perDay ?? 'n/a'} triggers/day (estimate from ${spanH}h of data), ${pos} entr${pos === 1 ? 'y' : 'ies'} opened, ${cy.c ? goal.leads_per_cycle : 'n/a'} leads/cycle. Worker awake in ${hrs} of ${spanH} hours (${awake_pct ?? 'n/a'}%). Gate rejects: ${gtxt || 'none recorded'}.`,
         'This is a count of what happened, not a performance claim. Zero entries is a legitimate outcome.'];
-      return { text: parts.join(' '), facts: { cycles_expected: expected, cycles: cy.c, leads: cy.l, scanned: cy.s, triggered: cy.t, opened: cy.o, signals: sg, stalls: st, positions: pos }, generated_at: new Date().toISOString(), note: 'Template text built only from stored rows; no model-written claims.' };
+      return { text: parts.join(' '), facts: { goal, cycles_expected: expected, cycles: cy.c, leads: cy.l, scanned: cy.s, triggered: cy.t, opened: cy.o, signals: sg, stalls: st, positions: pos }, generated_at: new Date().toISOString(), note: 'Template text built only from stored rows; no model-written claims.' };
     },
     lab() {
       const marks = q(`SELECT position_id, marked_at, net_multiple FROM position_marks WHERE valuation_state='PRICED' AND net_multiple IS NOT NULL ORDER BY position_id, marked_at LIMIT 5000`);
