@@ -6,13 +6,27 @@ const TEMPLATE_VERSION = 'tg-v1';
 export class Outbox {
   constructor(db) { this.db = db; }
   enqueue(kind, payload) {
+    // Presentation rule (owner): Telegram only gets signal cards that are real entries with a coin name and contract.
+    // DATA_INCOMPLETE / REJECTED / no-capital signals stay in the DB and the app journal, never in Telegram.
+    if (kind === 'signal' && !(payload.decision === 'PAPER_OPEN' && payload.mint && payload.name)) return;
     const key = `${kind}:${payload.mint ?? ''}:${payload.position ?? ''}:${payload.multiple ?? ''}:${payload.at ?? ''}:${Date.now()}`;
     this.db.prepare(`INSERT OR IGNORE INTO telegram_outbox (id, event_key, destination_ref, template_version, payload_json, state)
       VALUES (?,?,?,?,?, 'PENDING')`).run(uuid(), key, 'default', TEMPLATE_VERSION, JSON.stringify({ kind, ...payload }));
   }
   card(kind, p) {
     switch (kind) {
-      case 'signal': return `🟡 PAPER SIGNAL\nmint: ${esc(p.mint)}\nscore: ${p.score ?? 'n/a'} | risk: ${p.risk ?? 'n/a'}\nnotional: $${p.notional ?? 'n/a'} | venue: ${p.venue ?? 'n/a'}\ndecision: ${p.decision}\nreasons: ${(p.reasons ?? []).map(esc).join(', ') || '-'}`;
+      case 'signal': {
+        const m = esc(p.mint), sol = (s) => s == null ? null : String(s);
+        const lines = [`🟢 PAPER ENTRY - ${esc(p.name)}${p.symbol ? ' ($' + esc(p.symbol) + ')' : ''}`, 'Contract (tap to copy):', `<code>${m}</code>`,
+          `Links: <a href="https://gmgn.ai/sol/token/${m}">GMGN</a> | <a href="https://web3.binance.com/en/token/solana/${m}">Binance</a> | <a href="https://dexscreener.com/solana/${m}">Dexscreener</a>`];
+        if (p.entry_at) lines.push(`Entry time: ${esc(p.entry_at)}`);
+        if (p.notional) lines.push(`Paper size: $${esc(p.notional)}`);
+        if (p.wallet) lines.push(`Wallet: <code>${esc(p.wallet)}</code>`);
+        if (sol(p.sol_spent)) lines.push(`SOL spent by wallet: ${esc(p.sol_spent)}`);
+        if (!p.wallet) lines.push('Trigger: price surge (no single wallet)');
+        lines.push('PAPER ONLY - not a trade, not advice.');
+        return lines.join('\n');
+      }
       case 'milestone': return `📈 MILESTONE\nposition: ${esc(p.position)}\nmint: ${esc(p.mint)}\n${p.multiple}X first observed\nliquidation estimate: $${p.liquidation} (budget $${p.budget})\nPaper mark only - NOT booked profit.`;
       case 'exit': return `🔴 PAPER EXIT\nposition: ${esc(p.position)}\nmint: ${esc(p.mint)}\nreason: ${esc(p.reason)}\nproceeds: $${p.proceeds} | basis: $${p.basis}\nrealized P&L: $${p.pnl}`;
       case 'digest': return `📋 DAILY DIGEST\ncash: $${p.cash}\nrealized P&L: $${p.realized}\nequity: ${p.equity ?? 'UNPRICEABLE'}\nopen positions: ${p.open}\nstate: ${p.state}`;
@@ -31,7 +45,7 @@ export class Outbox {
       try {
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+          body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
           signal: AbortSignal.timeout(10000)
         });
         const j = await res.json().catch(() => null);
