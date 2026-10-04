@@ -120,6 +120,9 @@ CREATE INDEX IF NOT EXISTS idx_outbox_state ON telegram_outbox(state, next_attem
 CREATE TABLE IF NOT EXISTS helius_usage (
   month TEXT PRIMARY KEY, credits INTEGER NOT NULL DEFAULT 0, cap_notified INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS helius_usage_source (
+  month TEXT NOT NULL, source TEXT NOT NULL, credits INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (month, source)
+);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL, body_md TEXT NOT NULL,
   created_at TEXT NOT NULL, period TEXT NULL

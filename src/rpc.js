@@ -11,6 +11,8 @@ export class Quota {
   utilization() { return this.used / this.cap; }
 }
 
+// Helius credits per standard JSON-RPC call (1 unless listed; the 1-credit default is from Helius docs, UNVERIFIED against the dashboard).
+export const STD_RPC_COST = { getTokenLargestAccounts: 10, getTokenAccountsByOwner: 10, getProgramAccounts: 10, getAsset: 10 };
 export class Rpc {
   constructor({ endpoint, quota, db, record = true }) {
     this.endpoint = endpoint; this.quota = quota; this.db = db; this.record = record;
@@ -22,6 +24,7 @@ export class Rpc {
     let lastErr = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
+        if (this.meter) this.meter.guard(STD_RPC_COST[method] ?? 1); // counted per attempt; throws helius-credit-cap at the cap (callers fail closed)
         const res = await fetch(this.endpoint, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: ++this.id, method, params }),

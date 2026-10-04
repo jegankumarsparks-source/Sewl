@@ -1,6 +1,7 @@
 // Helius Enhanced Transactions (parsed swaps). Config-gated: inert without HELIUS_API_KEY.
 // The API key is sent only in the request URL and is NEVER written to evidence, logs or errors.
 import { Quota } from '../rpc.js';
+import { currentSource } from '../meter.js';
 import { recordObservation } from '../evidence.js';
 
 const BASE = 'https://api.helius.xyz';
@@ -13,7 +14,7 @@ export class Helius {
   monthKey() { return this.now().toISOString().slice(0, 7); }
   creditsUsed() { return this.db.prepare('SELECT credits FROM helius_usage WHERE month=?').get(this.monthKey())?.credits ?? 0; }
   capReached() { return this.monthlyCap != null && this.creditsUsed() >= Number(this.monthlyCap); }
-  charge(n) { this.db.prepare('INSERT INTO helius_usage (month, credits) VALUES (?,?) ON CONFLICT(month) DO UPDATE SET credits = credits + excluded.credits').run(this.monthKey(), n); this.credits = (this.credits ?? 0) + n; }
+  charge(n) { this.db.prepare('INSERT INTO helius_usage (month, credits) VALUES (?,?) ON CONFLICT(month) DO UPDATE SET credits = credits + excluded.credits').run(this.monthKey(), n); this.db.prepare('INSERT INTO helius_usage_source (month, source, credits) VALUES (?,?,?) ON CONFLICT(month, source) DO UPDATE SET credits = credits + excluded.credits').run(this.monthKey(), currentSource(), n); this.credits = (this.credits ?? 0) + n; }
   // True exactly once per month, the first time the cap blocks a call (drives the single warning card).
   markCapNotified() { const r = this.db.prepare('UPDATE helius_usage SET cap_notified=1 WHERE month=? AND cap_notified=0').run(this.monthKey()); return r.changes > 0; }
   guard(cost) { if (this.capReached() || (this.monthlyCap != null && this.creditsUsed() + cost > Number(this.monthlyCap))) throw new Error('helius-credit-cap'); this.charge(cost); }
