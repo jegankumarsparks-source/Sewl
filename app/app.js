@@ -78,13 +78,33 @@ const V = {
     requestAnimationFrame(() => document.querySelectorAll('.ring .p').forEach((c) => { c.style.strokeDashoffset = c.dataset.to; }));
   },
   async signalsList() {
-    const d = await get('signals');
-    $('#view').innerHTML = head('Signals', 'Whale and momentum decisions, newest first') + banner + (d.signals.map((s) => {
-      const lat = s.origin === 'momentum' ? `<div class="sub">latency (upper bound): detect ${ms(s.detection_ms != null && s.candle_start_ms != null ? s.detection_ms - s.candle_start_ms : null)} | entry ${ms(s.entry_ms != null && s.detection_ms != null ? s.entry_ms - s.detection_ms : null)} | ${esc(s.candle_time_source ?? 'n/a')}</div>` : '';
-      return `<div class="card"><div class="row" style="padding:0;border:0"><span class="mono">${esc(short(s.mint))}</span><span>${badge(s.origin, s.origin === 'momentum' ? '' : 'mute')} ${badge(s.decision, decisionKind(s.decision))}</span></div>
+    const d = await get('signals'); const hid = JSON.parse(localStorage.getItem('sewl_hidden') || '[]'), watch = JSON.parse(localStorage.getItem('sewl_watch') || '[]');
+    const seen = Number(localStorage.getItem('sewl_seen') || 0); const fresh = d.signals.filter((s) => Date.parse(s.qualified_at) > seen && s.decision === 'PAPER_OPEN');
+    if (d.signals[0]) localStorage.setItem('sewl_seen', String(Math.max(seen, Date.parse(d.signals[0].qualified_at) || 0)));
+    if (fresh.length && 'Notification' in window && Notification.permission === 'granted') new Notification('SEWL (paper)', { body: fresh.length + ' new paper entry signal(s)' });
+    const alertBar = fresh.length ? `<div class="card alert">New paper entry since your last visit: ${fresh.map((s) => esc(short(s.mint, 4))).join(', ')}</div>` : '';
+    const cards = d.signals.filter((s) => !hid.includes(s.id)).map((s) => {
+      const lat = s.origin === 'momentum' ? `<div class="sub">latency (upper bound): detect ${ms(s.detection_ms != null && s.candle_start_ms != null ? s.detection_ms - s.candle_start_ms : null)} | entry ${ms(s.latency_ms)}</div>` : '';
+      const ck = s.checks ? Object.entries(s.checks).filter(([k]) => k !== 'extensions_decoded').map(([k, v]) => `<div class="row" style="padding:6px 0"><span class="sub">${esc(k.replace(/_/g, ' '))}</span>${badge(v, v === 'PASS' || v === 'ROUTE_OK' ? 'ok' : v === 'FAIL' ? 'bad' : 'warn')}</div>`).join('') : '<div class="sub">No risk assessment stored for this signal (not evaluated).</div>';
+      return `<div class="swipe" data-id="${esc(s.id)}"><div class="swhint l">watch</div><div class="swhint r">hide</div><div class="card sigcard" ${tip('signal row id ' + s.id)}><div class="row" style="padding:0;border:0"><a class="mono link" href="#/coin/${esc(s.mint)}">${esc(short(s.mint))}</a><span>${badge(s.origin, s.origin === 'momentum' ? 'warn' : 'mute')} ${badge(s.decision, decisionKind(s.decision))}${watch.includes(s.id) ? ' ' + badge('watching', 'ok') : ''}</span></div>
       <div class="sub">${esc(s.qualified_at)} (${ago(s.qualified_at)}) | rule ${esc(s.rule_version)}</div>${lat}
-      <div style="margin-top:8px">${s.reasons.map((r) => badge(r, 'mute')).join(' ') || '<span class="sub">no reason codes</span>'}</div></div>`;
-    }).join('') || '<div class="card empty">No signals yet. Zero signals is a legitimate outcome, not proof the system is idle or broken.</div>');
+      <div style="margin-top:8px">${s.reasons.map((r) => badge(r, 'mute')).join(' ') || '<span class="sub">no reason codes</span>'}</div>
+      <details class="gate"><summary>Gate checklist</summary>${ck}</details>
+      <button class="chip rp" data-replay="${esc(s.id)}">&#9654; Replay</button></div></div>`;
+    }).join('');
+    $('#view').innerHTML = head('Signals', 'Whale and momentum decisions, newest first') + banner + alertBar + (cards || '<div class="card empty">No signals yet. Zero signals is a legitimate outcome, not proof the system is idle or broken.</div>') + (hid.length ? '<button class="chip" id="unhide">Show ' + hid.length + ' hidden</button>' : '') + `<div class="sub" style="padding:8px">Swipe a card right to watch, left to hide (saved on this device only). ${('Notification' in window) ? '<a class="link" href="#" id="enNotif">Enable in-app alerts</a>' : ''} Alerts fire only while the app is open; true background push needs a push service that this read-only app does not have.</div>`;
+    window.__bindSig = () => {
+    const find = (id) => d.signals.find((x) => x.id === id);
+    document.querySelectorAll('.rp').forEach((b) => (b.onclick = () => { const s = find(b.dataset.replay); replay(s); }));
+    const un = $('#unhide'); if (un) un.onclick = () => { localStorage.removeItem('sewl_hidden'); V.signals(); };
+    const en = $('#enNotif'); if (en) en.onclick = (e) => { e.preventDefault(); Notification.requestPermission().then(() => V.signals()); };
+    document.querySelectorAll('.swipe').forEach((el) => { let x0 = 0, dx = 0; const c = el.querySelector('.sigcard');
+      el.addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; dx = 0; }, { passive: true });
+      el.addEventListener('touchmove', (e) => { dx = e.touches[0].clientX - x0; if (Math.abs(dx) > 12) c.style.transform = `translateX(${dx}px)`; }, { passive: true });
+      el.addEventListener('touchend', () => { c.style.transform = ''; const id = el.dataset.id; if (dx > 90) { const w = new Set(JSON.parse(localStorage.getItem('sewl_watch') || '[]')); w.has(id) ? w.delete(id) : w.add(id); localStorage.setItem('sewl_watch', JSON.stringify([...w])); tick(); V.signals(); } else if (dx < -90) { const h = JSON.parse(localStorage.getItem('sewl_hidden') || '[]'); h.push(id); localStorage.setItem('sewl_hidden', JSON.stringify(h)); tick(); V.signals(); } }); });
+  
+    };
+    window.__bindSig();
   },
   async momentum() {
     const d = await get('momentum'); const l = d.last_1h, l24 = d.last_24h, t = d.trigger;
@@ -125,7 +145,7 @@ const V = {
   },
   async signals() {
     const mk = await CV.markets(); await V.signalsList(); const cur = $('#view').innerHTML; const i = cur.indexOf('</div>', cur.indexOf('class="banner"')) + 6;
-    $('#view').innerHTML = cur.slice(0, i) + `<div class="card"><h2>Markets</h2><div class="sub">Tap a coin for details. Long-press for a quick preview.</div>${mk}</div><h2 style="margin:16px 4px 8px">Decisions</h2>` + cur.slice(i);
+    $('#view').innerHTML = cur.slice(0, i) + `<div class="card"><h2>Markets</h2><div class="sub">Tap a coin for details. Long-press for a quick preview.</div>${mk}</div><h2 style="margin:16px 4px 8px">Decisions</h2>` + cur.slice(i); window.__bindSig && window.__bindSig();
   },
   async wallets() {
     await V.walletsList(); const cur = $('#view').innerHTML; const i = cur.indexOf('</div>', cur.indexOf('class="banner"')) + 6;
@@ -172,10 +192,22 @@ function md(src) {
   close(); return out;
 }
 
+// REPLAY: steps through the recorded decision timeline of one signal (real stored timestamps only; nothing is simulated).
+function replay(s) {
+  const t0 = Date.parse(s.qualified_at); const steps = [];
+  if (s.candle_start_ms != null) steps.push(['Surge candle starts', s.candle_start_ms]);
+  if (s.detection_ms != null) steps.push(['Detected by the scanner', s.detection_ms]);
+  if (!isNaN(t0)) steps.push(['Signal qualified (' + s.decision + ')', t0]);
+  if (s.entry_ms != null) steps.push(['Paper entry quote taken', s.entry_ms]);
+  steps.sort((a, b) => a[1] - b[1]);
+  if (!steps.length) return sheet('<h2>Replay</h2><div class="sub">No stored timeline timestamps for this signal (UNVERIFIED).</div>');
+  const base = steps[0][1]; sheet(`<h2>Replay</h2><div class="sub">Stored timestamps of signal ${esc(short(s.id, 4))}. Latencies are upper bounds.</div><div id="rpl"></div><div class="sub">Gate result: ${esc(s.decision)} | ${esc(s.reasons.join(', '))}</div>`);
+  let i = 0; const host = $('#rpl'); const next = () => { if (!host || i >= steps.length) return; const st = steps[i++]; host.insertAdjacentHTML('beforeend', `<div class="tl"><i></i><div><b>${esc(st[0])}</b><div class="sub">+${((st[1] - base) / 1000).toFixed(1)} s | ${new Date(st[1]).toISOString().slice(11, 23)}Z</div></div></div>`); tick(); setTimeout(next, 700); }; next();
+}
 let timer;
 async function render() {
   const h = location.hash.replace(/^#\/?/, ''); const [r, id] = h.split('/'); const route = V[r ?? ''] ? (r ?? '') : '';
-  nav(route);
+  nav(route); if (typeof closeSheet === "function") closeSheet();
   $('#view').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try { await V[route](id ? (route === 'reports' ? Number(id) : id) : undefined); } catch (e) { $('#view').innerHTML = STATIC_MODE && /snapshot/.test(e.message) ? `<a class="link" href="#/signals">&larr; Back</a><div class="card"><h2>Not in the current snapshot</h2><div class="sub">This public monitoring copy only pre-renders the top coins, open positions and a few wallets, refreshed every ~10 minutes. The full live version (on the host) can open any coin or wallet.</div></div>` : `<div class="card"><h2>Could not load</h2><div class="sub">${esc(e.message)}</div></div>`; }
   clearInterval(timer); clearInterval(coinTimer); if (!['coin', 'wallet'].includes(route) && (route !== 'reports' || !id)) timer = setInterval(() => V[route](id ? Number(id) : undefined).catch(() => {}), 30000);

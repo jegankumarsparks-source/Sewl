@@ -68,6 +68,8 @@ const CV = {
       <div class="card"><div class="lbl">Pool age</div><div class="kpi sm">${ageMin == null ? 'n/a' : ageMin < 120 ? ageMin + ' min' : (ageMin / 60).toFixed(1) + ' h'}</div><div class="sub">${esc(m?.dex ?? '')}</div></div></div>
     <div class="card"><h2>Buy / sell pressure</h2><div class="pres" style="${tot ? '' : 'background:#2a2f3a'}"><i style="width:${tot ? buys / tot * 100 : 0}%"></i></div>
       <div class="sub">${d.trades.length ? '' : 'No swaps could be parsed from this coin\'s latest 100 on-chain transactions (venue may be unsupported); showing DEX Screener counts only. '}Last ${d.trades.length} swaps (on-chain, SOL-quoted): buys ${buys.toFixed(2)} SOL | sells ${sells.toFixed(2)} SOL.${m?.txns_h1 ? ` DEX Screener 1h: ${m.txns_h1.buys} buys / ${m.txns_h1.sells} sells.` : ''}</div></div>
+    <div class="card"><h2>Copy impact</h2>${d.copy_impact === undefined ? `<div class="sub">Not in this snapshot yet (refreshes within 90 min).</div>` : d.copy_impact ? `<div class="pres" style="background:#2a2f3a"><i style="width:${Math.min(100, d.copy_impact.est_impact_pct * 10)}%;background:${d.copy_impact.est_impact_pct > 5 ? 'var(--bad)' : d.copy_impact.est_impact_pct > 2 ? 'var(--warn)' : 'var(--ok)'}"></i></div><div class="row"><span>A $${d.copy_impact.size_usd} paper buy moves price about</span><b>${d.copy_impact.est_impact_pct}%</b></div><div class="sub">${esc(d.copy_impact.label)}</div>` : '<div class="sub">Liquidity unknown, impact not estimated (UNVERIFIED).</div>'}</div>
+    <div class="card"><h2>Coordination</h2>${coordGraph(d.trades)}</div>
     <div class="card"><h2>Contract audit</h2>${a?.ok ? `<div class="row"><span>Mint authority</span>${badge(a.mint_authority_revoked ? 'revoked' : 'ACTIVE', a.mint_authority_revoked ? 'ok' : 'bad')}</div><div class="row"><span>Freeze authority</span>${badge(a.freeze_authority_revoked ? 'revoked' : 'ACTIVE', a.freeze_authority_revoked ? 'ok' : 'bad')}</div>${exts}` : '<div class="sub">Mint account could not be read (UNVERIFIED).</div>'}
       <div class="row"><span>Liquidity</span><span>$${fnum(m?.liquidity_usd)}</span></div><div class="row"><span>Pool age</span><span>${ageMin == null ? 'UNVERIFIED' : ageMin + ' min'}</span></div><div class="sub">${esc(d.liquidity_note)}</div></div>
     <div class="card"><h2>Top 20 holders</h2>${dn ? `<div class="dwrap">${dn.svg}<div class="sub">Tap a slice to open that wallet. Red = the creator wallet${dn.creatorPct ? ` (${dn.creatorPct.toFixed(1)}% of supply)` : ' (not among the top 20, or unknown)'}. The largest account is often the pool or curve; this is NOT classified by the app (UNVERIFIED).</div></div>` : '<div class="sub">Holder data unavailable.</div>'}</div>
@@ -89,24 +91,43 @@ async function drawCoin(mint, d) {
     $('#crOut').innerHTML = `<div class="row"><span>Coins created (latest 100 txs)</span><b>${c.length}</b></div><div class="row"><span ${tip('Heuristic: liquidity < $1000 or no pair. Not proof of a rug.')}>Dead/rugged-looking (HEURISTIC)</span><b>${dead}</b></div>` + c.map((x) => `<a class="row coinrow" href="#/coin/${esc(x.mint)}" style="text-decoration:none;color:inherit"><span>${esc(x.symbol ?? short(x.mint))}</span>${badge(x.status.replace(/_/g, ' '), x.status === 'ACTIVE' ? 'ok' : 'warn')}</a>`).join('') + `<div class="sub">${esc(w.created_note)}</div>`; } catch (e) { $('#crOut').textContent = 'Could not load: ' + e.message; } };
 }
 
+function curveSvg(pts) {
+  if (!pts || pts.length < 2) return '<div class="sub">Not enough matched sells for a curve (needs 2+ coins with a sell and its buy in the window).</div>';
+  const w = 300, h = 90, vs = pts.map((p) => p.cum_pnl_sol), lo = Math.min(0, ...vs), hi = Math.max(0, ...vs), sp = hi - lo || 1, y = (v) => 8 + (hi - v) / sp * (h - 16);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + (i / (pts.length - 1) * w).toFixed(1) + ' ' + y(p.cum_pnl_sol).toFixed(1)).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}" class="spark" preserveAspectRatio="none"><line x1="0" x2="${w}" y1="${y(0)}" y2="${y(0)}" stroke="#2a2f3a" stroke-dasharray="3 3"/><path d="${d}" fill="none" stroke="${vs[vs.length - 1] >= 0 ? '#2ee59d' : '#ff5c6c'}" stroke-width="2"/></svg>`;
+}
+const dur = (s) => (s == null ? 'n/a' : s < 90 ? Math.round(s) + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : s < 172800 ? (s / 3600).toFixed(1) + ' h' : (s / 86400).toFixed(1) + ' d');
 CV.wallet = async function (addr) {
-  const w = await get('wallet/' + addr), p = w.pnl, tags = [];
-  const created = w.created_coins.length; const dead = w.created_coins.filter((c) => c.status === 'DEAD_OR_RUGGED_HEURISTIC').length;
-  if (created >= 3 && dead / created >= 0.6) tags.push(['Serial rugger?', 'bad', `${dead} of ${created} created coins look dead (heuristic)`]);
-  else if (created) tags.push(['Dev-adjacent', 'warn', `created ${created} coin(s) in the fetched window`]);
-  if ((w.sol_balance ?? 0) >= 1000) tags.push(['Whale', 'ok', `${w.sol_balance} SOL balance`]);
+  const w = await get('wallet/' + addr), p = w.pnl, st = w.stats ?? {}, tags = (w.tags ?? []).map((t) => [t.tag, t.kind, t.why]);
   const hit = (n) => (p.coins_with_realized_sells ? Math.round(n / p.coins_with_realized_sells * 100) : 0);
   return `<a class="link" href="#/wallets">&larr; Back</a><h1>Wallet</h1><div class="mono sub">${esc(addr)} <a class="link" href="${solscan('account', addr)}" target="_blank" rel="noopener noreferrer">Solscan</a></div>${banner}
   <div class="grid"><div class="card"><div class="lbl">SOL balance</div><div class="kpi sm">${w.sol_balance == null ? 'n/a' : w.sol_balance.toFixed(3)}</div></div>
     <div class="card"><div class="lbl">Last active</div><div class="kpi sm" style="font-size:15px">${tago(w.last_active)}</div></div>
     <div class="card"><div class="lbl">Realized P&amp;L (EST)</div><div class="kpi sm ${!p.coins_with_realized_sells ? '' : p.realized_pnl_sol >= 0 ? 'pos' : 'neg'}">${p.coins_with_realized_sells ? p.realized_pnl_sol + ' SOL' : 'n/a'}</div><div class="sub">${p.coins_with_realized_sells} coin(s) with a matched sell</div></div>
-    <div class="card"><div class="lbl">Coins traded</div><div class="kpi sm">${p.coins_traded}</div></div></div>
-  <div class="card"><h2>Tags</h2>${tags.map((t) => `<span class="badge ${t[1]}" ${tip(t[2])}>${esc(t[0])}</span> `).join('') || '<div class="sub">No tag applies on the data available. Sniper / Insider / Diamond Hands need first-block and hold-time data (UNVERIFIED, P1).</div>'}</div>
+    <div class="card"><div class="lbl">Mints traded</div><div class="kpi sm">${st.mints_traded ?? p.coins_traded}</div></div>
+    <div class="card"><div class="lbl">Win rate (EST)</div><div class="kpi sm">${st.win_rate == null ? 'n/a' : Math.round(st.win_rate * 100) + '%'}</div><div class="sub">${st.wins ?? 0}W / ${st.losses ?? 0}L of ${st.sample ?? 0}</div></div>
+    <div class="card"><div class="lbl">Median hold (EST)</div><div class="kpi sm">${dur(st.median_hold_s)}</div><div class="sub">${st.hold_sample ?? 0} coin(s)</div></div>
+    <div class="card"><div class="lbl">First seen in window</div><div class="kpi sm" style="font-size:15px">${tago(st.first_seen)}</div><div class="sub">latest 100 txs only</div></div></div>
+  <div class="card"><h2>Realized P&amp;L curve (EST, SOL)</h2>${curveSvg(st.curve)}<div class="sub">${esc(st.label ?? '')}</div></div>
+  <div class="card"><h2>Tags</h2>${tags.map((t) => `<span class="badge ${t[1]}" ${tip(t[2])}>${esc(t[0])}</span> `).join('') || '<div class="sub">No tag applies on the data available.</div>'}<div class="sub">Sniper and Insider tags need first-block and creator-link data we do not collect, so they are never shown (UNVERIFIED).</div></div>
   <div class="card"><h2>Hit rate (ESTIMATED)</h2><div class="hr"><span>1.5x</span><div class="bar"><i style="width:${hit(p.hit_1_5x)}%"></i></div><b>${p.hit_1_5x}/${p.coins_with_realized_sells}</b></div><div class="hr"><span>2x</span><div class="bar"><i style="width:${hit(p.hit_2x)}%"></i></div><b>${p.hit_2x}/${p.coins_with_realized_sells}</b></div><div class="sub">${esc(p.label)} ${p.coins_history_incomplete} coin(s) skipped as NULL: sold with the buy outside the fetched window.</div></div>
   <div class="card"><h2>Holdings</h2><div class="sub">${esc(w.holdings_note)}</div>${w.holdings.slice(0, 25).map((h) => `<a class="row coinrow" href="#/coin/${esc(h.mint)}" style="text-decoration:none;color:inherit"><span>${esc(h.symbol ?? short(h.mint))}</span><span>${h.est_value_usd == null ? '<span class="sub">unpriced</span>' : '~$' + fnum(h.est_value_usd)}</span></a>`).join('') || '<div class="empty">No token holdings.</div>'}</div>
   <div class="card"><h2>Coin history (ESTIMATED)</h2><div class="sub">Window: latest ${w.history_window.txs} txs. ${esc(w.history_window.note)}</div>${w.coins.slice(0, 40).map((c) => `<a class="row coinrow" href="#/coin/${esc(c.mint)}" style="text-decoration:none;color:inherit"><span class="mono">${esc(short(c.mint, 4))}</span><span>${c.realized_multiple == null ? '<span class="sub">NULL (incomplete)</span>' : c.realized_multiple + 'x'}</span><span class="sub">${tago(c.last_trade)}</span></a>`).join('')}</div>
   <div class="card"><h2>Coins created</h2>${w.created_coins.map((c) => `<a class="row coinrow" href="#/coin/${esc(c.mint)}" style="text-decoration:none;color:inherit"><span>${esc(c.symbol ?? short(c.mint))}</span>${badge(c.status.replace(/_/g, ' '), c.status === 'ACTIVE' ? 'ok' : 'warn')}</a>`).join('') || '<div class="sub">None in the fetched window.</div>'}<div class="sub">${esc(w.created_note)}</div></div>`;
 };
+
+// Coordination: wallets whose BUYS on this coin land within 15 s of each other (from the latest on-chain swaps). Descriptive only, not proof of collusion.
+function coordGraph(trades) {
+  const buys = trades.filter((t) => t.side === 'BUY' && t.wallet && t.time).sort((a, b) => a.time - b.time), edges = new Map(), nodes = new Set();
+  for (let i = 0; i < buys.length; i++) for (let j = i + 1; j < buys.length && buys[j].time - buys[i].time <= 5; j++) if (buys[i].wallet !== buys[j].wallet) { const k = [buys[i].wallet, buys[j].wallet].sort().join('|'); edges.set(k, (edges.get(k) ?? 0) + 1); nodes.add(buys[i].wallet); nodes.add(buys[j].wallet); }
+  if (edges.size > 25) for (const [k, n] of [...edges]) if (n < 2) { edges.delete(k); }
+  const nn = new Set(); for (const k of edges.keys()) k.split('|').forEach((x) => nn.add(x));
+  const ns = [...nn].slice(0, 14); if (ns.length < 2) return '<div class="sub">No wallets bought within 5 s of each other in the latest swaps (' + buys.length + ' buys checked).</div>';
+  const pos = Object.fromEntries(ns.map((n, i) => [n, [100 + 70 * Math.cos(i / ns.length * 6.283), 90 + 70 * Math.sin(i / ns.length * 6.283)]]));
+  const el = [...edges].filter(([k]) => k.split('|').every((x) => pos[x])).map(([k, n]) => { const [a, b] = k.split('|'); return `<line x1="${pos[a][0]}" y1="${pos[a][1]}" x2="${pos[b][0]}" y2="${pos[b][1]}" stroke="#f0b90b" stroke-opacity=".6" stroke-width="${Math.min(4, 1 + n)}"/>`; }).join('');
+  return `<svg viewBox="0 0 200 180" class="donut">${el}${ns.map((n) => `<a href="#/wallet/${esc(n)}"><circle cx="${pos[n][0]}" cy="${pos[n][1]}" r="6" fill="#22d3ee"><title>${esc(n)}</title></circle></a>`).join('')}</svg><div class="sub">${ns.length} wallets, ${edges.size} link(s). Lines join wallets that bought within 5 s of each other (latest on-chain swaps); on busy coins, only pairs that co-bought 2+ times are kept. Coincidence is common, so this is descriptive only, not evidence of coordination.</div>`;
+}
 
 // ---- gestures: swipe between tabs, pull-to-refresh, long-press preview
 const TABS = ['', 'signals', 'wallets', 'activity', 'health'];

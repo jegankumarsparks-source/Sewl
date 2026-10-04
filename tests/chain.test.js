@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openDb } from '../src/db.js';
 import { startApp } from '../src/app.js';
-import { fifoPnl, walletTrades, creatorOf, createdMints, Chain, validAddress, auditMint } from '../src/chain.js';
+import { fifoPnl, walletTrades, creatorOf, createdMints, Chain, validAddress, auditMint, walletStats, walletTags, copyImpact } from '../src/chain.js';
 import { GeckoTerminal } from '../src/sources/geckoterminal.js';
 
 const pump = JSON.parse(readFileSync(new URL('./fixtures/pump_txs.json', import.meta.url))).txs;
@@ -76,4 +76,34 @@ test('auditMint on the real Token-2022 mint: authorities revoked, extensions nam
   assert.equal(a.ok, true); assert.equal(a.token_2022, true); assert.ok(a.extensions.length >= 1);
   assert.ok(a.extensions.every(e => e.allowed === (e.type === 18 || e.type === 19)));
   assert.equal(auditMint(null), null);
+});
+
+test('walletStats: win rate, median hold, curve and first-seen match hand-computed values; unmatched sells excluded', () => {
+  const coins = [{ mint: 'A', realized_multiple: 2, realized_pnl_sol: 1, first_buy: 100, last_sell: 200 }, { mint: 'B', realized_multiple: 0.5, realized_pnl_sol: -0.4, first_buy: 150, last_sell: 450 },
+    { mint: 'C', realized_multiple: 1.2, realized_pnl_sol: 0.2, first_buy: 0, last_sell: 1000 }, { mint: 'D', realized_multiple: null, realized_pnl_sol: null, first_buy: null, last_sell: 900 }];
+  const s = walletStats(coins, { oldest: 77 });
+  assert.equal(s.win_rate, 0.667); assert.equal(s.sample, 3); assert.equal(s.median_hold_s, 300); assert.equal(s.first_seen, 77); assert.equal(s.mints_traded, 4);
+  assert.deepEqual(s.curve.map(p => p.cum_pnl_sol), [1, 0.6, 0.8]); assert.equal(walletStats([]).win_rate, null);
+});
+test('walletTags: each tag flips on its own condition; Sniper/Insider are never produced', () => {
+  const base = { hold_sample: 3, median_hold_s: 1000 };
+  assert.deepEqual(walletTags(base, {}), []);
+  assert.equal(walletTags({ hold_sample: 3, median_hold_s: 90000 }, {})[0].tag, 'Diamond hands');
+  assert.equal(walletTags({ hold_sample: 3, median_hold_s: 60 }, {})[0].tag, 'Flipper');
+  assert.equal(walletTags({ hold_sample: 2, median_hold_s: 60 }, {}).length, 0);
+  assert.equal(walletTags(base, { solBalance: 2000 })[0].tag, 'Whale');
+  const dead = (n) => Array.from({ length: n }, () => ({ status: 'DEAD_OR_RUGGED_HEURISTIC' }));
+  assert.equal(walletTags(base, { created: dead(3) })[0].tag, 'Serial rugger?'); assert.equal(walletTags(base, { created: dead(2) })[0].tag, 'Dev-adjacent');
+  for (const x of [walletTags({ hold_sample: 9, median_hold_s: 1 }, { solBalance: 1e6, created: dead(9) })]) assert.ok(!x.some(t => /Sniper|Insider/.test(t.tag)));
+});
+test('copyImpact: constant-product math; NULL when liquidity unknown', () => {
+  assert.equal(copyImpact(1000, 20).est_impact_pct, +(20 / 520 * 100).toFixed(2)); assert.equal(copyImpact(null), null); assert.equal(copyImpact(0), null);
+  assert.ok(copyImpact(100000, 20).est_impact_pct < copyImpact(1000, 20).est_impact_pct);
+});
+test('signals API exposes the real risk-assessment checks for the gate checklist', async () => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'sewl-')), 't.sqlite'); const db = openDb(file);
+  db.prepare(`INSERT INTO risk_assessments (id, mint, assessed_at, rule_version, result, checks_json) VALUES ('ra1','M','2026-10-04T00:00:00Z','v','REJECTED','{"identity":"FAIL"}')`).run();
+  db.prepare(`INSERT INTO signals (id, experiment_id, mint, qualified_at, buy_event_ids_json, rule_version, decision, reason_codes_json, dedupe_key, risk_assessment_id) VALUES ('s1','exp-1','M','2026-10-04T00:00:00Z','[]','momentum-v1','REJECTED','["risk:REJECTED"]','d1','ra1')`).run();
+  db.close(); const srv = startApp(cfg, { file }); const base = `http://127.0.0.1:${await listen(srv)}`;
+  try { const j = await (await fetch(base + '/api/signals')).json(); assert.deepEqual(j.signals[0].checks, { identity: 'FAIL' }); assert.equal(j.signals[0].checks_json, undefined); } finally { srv.close(); }
 });
