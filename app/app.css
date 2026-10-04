@@ -114,3 +114,4 @@ body{background:#000}.bg-orb{display:none}
 .sheet.open .sh-body{transform:none}.grab{width:44px;height:4px;border-radius:2px;background:#2a2f3a;margin:0 auto 12px}
 .tabs a,.btn,.chip,.coinrow{touch-action:manipulation}
 .grid+.card{margin-top:12px}
+.snapage{display:none;font-size:10px;color:var(--muted)}body.static .snapage{display:inline}body.static .pb{margin-left:auto}.snapage+.hb{margin-left:0}

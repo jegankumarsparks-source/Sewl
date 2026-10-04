@@ -2,6 +2,7 @@ import { momentumCycle } from './momentum.js';
 import { startApp } from './app.js';
 import { Helius } from './sources/helius.js';
 import { Chain } from './chain.js';
+import { writeSnapshots } from './snapshot.js';
 import { GeckoTerminal } from './sources/geckoterminal.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
@@ -154,7 +155,13 @@ async function loop(name, seconds, fn) {
   }
 }
 loop('momentum', cfg.momentum?.cycle_seconds ?? 60, async () => { if (!cfg.momentum?.enabled) return; const r = await momentumCycle(db, deps); health('momentum', 'INFO', 'momentum-cycle', r); });
-try { const srv = startApp(cfg, { chain: helius.enabled ? new Chain({ helius, dex }) : null, gecko: new GeckoTerminal(), state: deps.leadState ??= { cycle: 0 } }); if (srv) health('worker', 'INFO', 'app-listening', { host: process.env.SEWL_APP_HOST ?? cfg.app.host, port: process.env.SEWL_APP_PORT ?? cfg.app.port }); } catch (e) { health('worker', 'WARN', 'app-start-failed', { e: String(e).slice(0, 150) }); }
+const appChain = helius.enabled ? new Chain({ helius, dex }) : null, appGecko = new GeckoTerminal();
+try { const srv = startApp(cfg, { chain: appChain, gecko: appGecko, state: deps.leadState ??= { cycle: 0 } }); if (srv) health('worker', 'INFO', 'app-listening', { host: process.env.SEWL_APP_HOST ?? cfg.app.host, port: process.env.SEWL_APP_PORT ?? cfg.app.port }); } catch (e) { health('worker', 'WARN', 'app-start-failed', { e: String(e).slice(0, 150) }); }
+
+// Static snapshots for the public monitoring copy: every 10 min, credit-budgeted (see src/snapshot.js). Read-only.
+const snapSecrets = [process.env.HELIUS_API_KEY, process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID].filter(Boolean);
+async function snapTick() { try { const r = await writeSnapshots({ db, cfg, state: deps.leadState ?? {}, chain: appChain, gecko: appGecko, helius, secrets: snapSecrets, dir: 'site/snap' }); health('snapshot', r.rejected.length ? 'WARN' : 'INFO', 'snapshot-written', { files: r.written.length, rejected: r.rejected.length, credits: r.credits }); } catch (e) { health('snapshot', 'ERROR', 'snapshot-failed', { error: String(e.message ?? e).slice(0, 200) }); } }
+setTimeout(() => snapTick(), 90 * 1000).unref(); setInterval(() => snapTick(), 10 * 60 * 1000).unref();
 loop('discovery', cfg.discovery_cadence_minutes * 60, discoverCycle);
 loop('history', 300, historyCycle);
 loop('watch', cfg.poll_seconds, watchCycle);

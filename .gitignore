@@ -2,3 +2,5 @@
 var/
 node_modules/
 *.sqlite*
+site/snap/
+site/.snap_state.json

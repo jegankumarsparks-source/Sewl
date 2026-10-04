@@ -26,7 +26,16 @@ function nav(cur) {
   $('#side').innerHTML = '<div class="brand">SE<b>WL</b> <span class="badge mute">PAPER</span></div>' + ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${on === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
   $('#tabs').innerHTML = ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${on === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
 }
-async function get(p) { const r = await fetch('/api/' + p, { cache: 'no-store' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
+// STATIC = public monitoring copy (GitHub Pages): reads pre-baked snapshot JSONs, never a live API.
+const STATIC_MODE = /\.github\.io$/.test(location.hostname) || new URLSearchParams(location.search).has('static');
+const snapName = (p) => { const [path, q] = p.split('?'); const s = path.split('/'); if (s[0] === 'ohlcv') return `ohlcv_${s[1]}_${new URLSearchParams(q).get('tf') ?? '5m'}.json`; return s.length === 2 ? `${s[0]}_${s[1]}.json` : `${s[0]}.json`; };
+async function get(p) {
+  if (STATIC_MODE) {
+    if (['evidence', 'reports'].includes(p.split('/')[0])) throw new Error('not in the public snapshot (full version only)');
+    const r = await fetch('snap/' + snapName(p), { cache: 'no-store' }); if (!r.ok) throw new Error('not in current snapshot'); const d = await r.json(); if (d.snapshot_at) window.SNAP_AT = d.snapshot_at; return d;
+  }
+  const r = await fetch('/api/' + p, { cache: 'no-store' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json();
+}
 const badge = (t, k = '') => `<span class="badge ${k}">${esc(t)}</span>`;
 const decisionKind = (d) => (d === 'PAPER_OPEN' ? 'ok' : d === 'REJECTED' ? 'bad' : d === 'WATCH_ONLY' || d === 'DATA_INCOMPLETE' || d === 'QUALIFIED_NO_CAPITAL' ? 'warn' : 'mute');
 
@@ -124,7 +133,7 @@ const V = {
     $('#wf').onsubmit = (e) => { e.preventDefault(); const v = $('#wi').value.trim(); if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) location.hash = '#/wallet/' + v; else $('#wi').classList.add('bad'); };
   },
   async activity() {
-    $('#view').innerHTML = head('Activity', 'Evidence, reports and the scan loop') + banner + `<div class="card"><a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log</span><span>&rsaquo;</span></a><a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a></div>`;
+    $('#view').innerHTML = head('Activity', 'Evidence, reports and the scan loop') + banner + `<div class="card">${STATIC_MODE ? '' : '<a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log</span><span>&rsaquo;</span></a>'}<a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a></div>`;
   },
   async coin(mint) { const html = await CV.coin(mint); $('#view').innerHTML = html; drawCoin(mint, await get('coin/' + mint)); clearInterval(coinTimer); coinTimer = setInterval(async () => { try { const d = await get('coin/' + mint); const el = $('#px'); if (!el) return clearInterval(coinTimer); const old = el.textContent; el.textContent = price(d.market?.price_usd); if (el.textContent !== old) { el.classList.remove('up', 'dn'); void el.offsetWidth; el.classList.add(Number(d.market?.price_usd) >= 0 ? 'up' : 'dn'); } } catch (_) {} }, 15000); },
   async wallet(addr) { $('#view').innerHTML = await CV.wallet(addr); },
@@ -168,8 +177,9 @@ async function render() {
   const h = location.hash.replace(/^#\/?/, ''); const [r, id] = h.split('/'); const route = V[r ?? ''] ? (r ?? '') : '';
   nav(route);
   $('#view').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
-  try { await V[route](id ? (route === 'reports' ? Number(id) : id) : undefined); } catch (e) { $('#view').innerHTML = `<div class="card"><h2>Could not load</h2><div class="sub">${esc(e.message)}</div></div>`; }
+  try { await V[route](id ? (route === 'reports' ? Number(id) : id) : undefined); } catch (e) { $('#view').innerHTML = STATIC_MODE && /snapshot/.test(e.message) ? `<a class="link" href="#/signals">&larr; Back</a><div class="card"><h2>Not in the current snapshot</h2><div class="sub">This public monitoring copy only pre-renders the top coins, open positions and a few wallets, refreshed every ~10 minutes. The full live version (on the host) can open any coin or wallet.</div></div>` : `<div class="card"><h2>Could not load</h2><div class="sub">${esc(e.message)}</div></div>`; }
   clearInterval(timer); clearInterval(coinTimer); if (!['coin', 'wallet'].includes(route) && (route !== 'reports' || !id)) timer = setInterval(() => V[route](id ? Number(id) : undefined).catch(() => {}), 30000);
 }
 addEventListener('hashchange', render); render();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if ('serviceWorker' in navigator && !STATIC_MODE) navigator.serviceWorker.register('/sw.js').catch(() => {});
+if (STATIC_MODE) { document.body.classList.add('static'); const t = () => { const e = $('#snapage'); if (e) e.textContent = window.SNAP_AT ? 'snapshot ' + ago(window.SNAP_AT) : 'snapshot'; }; setInterval(t, 5000); setTimeout(t, 800); }
