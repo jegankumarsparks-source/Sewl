@@ -162,5 +162,15 @@ setInterval(() => { // stall heartbeat: catches hangs, not just crashes
     }
   }
 }, 60_000).unref();
-setInterval(digestCycle, 24 * 3600 * 1000).unref();
+// Daily digest at a fixed hour (IST), once per IST calendar day; restart-safe via health_events.
+async function digestTick() {
+  const h = cfg.digest_hour_ist ?? 9;
+  const ist = new Date(Date.now() + 5.5 * 3600 * 1000); const day = ist.toISOString().slice(0, 10);
+  if (ist.getUTCHours() < h) return;
+  const done = db.prepare(`SELECT 1 FROM health_events WHERE code='digest-sent' AND detail_json LIKE ?`).get(`%${day}%`);
+  if (done) return;
+  await digestCycle();
+  db.prepare(`INSERT INTO health_events (id, component, at, severity, code, detail_json) VALUES (?,?,?,?,?,?)`).run(uuid(), 'digest', nowIso(), 'INFO', 'digest-sent', JSON.stringify({ day, hour_ist: h }));
+}
+setInterval(() => digestTick().catch(() => {}), 60 * 1000).unref();
 process.on('SIGINT', () => { stopped = true; console.log('stopping gracefully'); setTimeout(() => process.exit(0), 500); });
