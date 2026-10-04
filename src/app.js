@@ -2,7 +2,7 @@
 // Binds to 127.0.0.1 by default; expose only through an SSH tunnel / firewalled IP (see DEPLOYMENT.md).
 // Optional HTTP Basic auth: set SEWL_APP_PASSWORD in the environment (never in git).
 import http from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { latencyStats } from './momentum.js';
@@ -12,7 +12,7 @@ const safeEq = (a, b) => timingSafeEqual(createHash('sha256').update(String(a)).
 const ROOT = path.resolve('app');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.json': 'application/json' };
-const STATIC = new Set(['index.html', 'app.css', 'app.js', 'coin.js', 'manifest.webmanifest', 'sw.js', 'icon.svg']);
+const STATIC = new Set(['index.html', 'app.css', 'app.js', 'coin.js', 'p2.js', 'manifest.webmanifest', 'sw.js', 'icon.svg']);
 const num = (x) => (x == null || x === '' || Number.isNaN(Number(x)) ? null : Number(x));
 
 export function buildApi(db, cfg) {
@@ -83,7 +83,44 @@ export function buildApi(db, cfg) {
         recent: q(`SELECT at, component, severity, code, detail_json FROM health_events WHERE code!='momentum-cycle' ORDER BY at DESC LIMIT 30`).map(r => ({ ...r, detail: parse(r.detail_json), detail_json: undefined })),
         outbox: q(`SELECT state, COUNT(*) n FROM telegram_outbox GROUP BY state`),
         key_quota: { configured: false, note: 'No API keys configured (keyless public RPC). Per-key quota counters arrive with the key plan (Phase 2).' },
+        helius: (() => { const r = one(`SELECT credits FROM helius_usage WHERE month=?`, new Date().toISOString().slice(0, 7)); return { month: new Date().toISOString().slice(0, 7), used: r?.credits ?? 0, cap: 800000, snapshot_budget: 120000 }; })(),
+        cycles_6h: q(`SELECT substr(at,1,15) b, COUNT(*) n FROM health_events WHERE code='momentum-cycle' AND at >= ? GROUP BY 1 ORDER BY 1`, new Date(Date.now() - 6 * 3600_000).toISOString()),
+        stall_events: q(`SELECT at, detail_json FROM health_events WHERE code='loop-stalled' ORDER BY at DESC LIMIT 20`).map(s => ({ at: s.at, age_s: parse(s.detail_json)?.last_done_age_s ?? null })),
         stall_note: 'loop-stalled = a loop did not finish within 3x its interval: a hang OR a host pause (this sandbox freezes between sessions).' };
+    },
+
+    pnl() {
+      const eq = q(`SELECT at, equity_usd FROM equity_valuations WHERE complete_data=1 ORDER BY at DESC LIMIT 500`).reverse();
+      const ms = q(`SELECT m.position_id, m.multiple, m.first_observed_at, p.mint FROM milestones m JOIN paper_positions p ON p.id=m.position_id ORDER BY m.first_observed_at DESC LIMIT 50`);
+      const closed = q(`SELECT id, mint, state, entry_total_usd FROM paper_positions WHERE state!='OPEN'`);
+      const by = {}; for (const c of closed) by[c.state] = (by[c.state] ?? 0) + 1;
+      const lat = q(`SELECT b.detected_at at, b.latency_ms FROM buy_events b WHERE b.origin='momentum' AND b.latency_ms IS NOT NULL ORDER BY b.detected_at DESC LIMIT 100`).reverse();
+      return { equity_series: eq, milestones: ms, closed_by_state: by, closed_total: closed.length, latency_series: lat,
+        note: 'Every point is a stored valuation row. Empty series are shown as empty, never as zero. Not proof of profitability.' };
+    },
+    journal() {
+      const sig = q(`SELECT s.id, s.qualified_at at, s.mint, s.decision, s.reason_codes_json r, s.rule_version FROM signals s ORDER BY s.qualified_at DESC LIMIT 60`).map(r => ({ at: r.at, kind: 'signal', ref: r.id, mint: r.mint, title: r.decision + ' (' + r.rule_version + ')', detail: parse(r.r)?.join(', ') ?? '' }));
+      const pos = q(`SELECT id, mint, entry_at, closed_at, state, origin FROM paper_positions ORDER BY entry_at DESC LIMIT 60`).flatMap(p => [{ at: p.entry_at, kind: 'entry', ref: p.id, mint: p.mint, title: 'Paper entry (' + p.origin + ')', detail: '' }, ...(p.closed_at ? [{ at: p.closed_at, kind: 'exit', ref: p.id, mint: p.mint, title: 'Position ' + p.state, detail: '' }] : [])]);
+      const ev = q(`SELECT id, at, severity, code, detail_json FROM health_events WHERE code IN ('startup','loop-stalled','digest-failed','helius-credit-cap','credit-cap-warning') OR severity='ERROR' ORDER BY at DESC LIMIT 40`).map(h => ({ at: h.at, kind: 'event', ref: h.id, title: h.code + ' (' + h.severity + ')', detail: String(h.detail_json ?? '').slice(0, 160) }));
+      return { entries: [...sig, ...pos, ...ev].sort((x, y) => String(y.at).localeCompare(String(x.at))).slice(0, 100), note: 'Merged from stored signals, positions and health events. Tooltip/ref = row id.' };
+    },
+    weekly() {
+      const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+      const cy = one(`SELECT COUNT(*) c, COALESCE(SUM(json_extract(detail_json,'$.leads')),0) l, COALESCE(SUM(json_extract(detail_json,'$.scanned')),0) s, COALESCE(SUM(json_extract(detail_json,'$.triggered')),0) t, COALESCE(SUM(json_extract(detail_json,'$.opened')),0) o FROM health_events WHERE code='momentum-cycle' AND at >= ?`, since);
+      const sg = q(`SELECT decision, COUNT(*) n FROM signals WHERE qualified_at >= ? GROUP BY 1`, since);
+      const st = one(`SELECT COUNT(*) n FROM health_events WHERE code='loop-stalled' AND at >= ?`, since).n;
+      const pos = one(`SELECT COUNT(*) n FROM paper_positions WHERE entry_at >= ?`, since).n;
+      const first = one(`SELECT MIN(at) t FROM health_events WHERE code='momentum-cycle'`).t;
+      const parts = [`Window: last 7 days (data exists since ${first ?? 'n/a'}).`, `The scanner ran ${cy.c} cycles, saw ${cy.l} leads and scanned ${cy.s}.`, `${cy.t} coin(s) met the surge trigger and ${cy.o} paper entr${cy.o === 1 ? 'y was' : 'ies were'} opened.`,
+        sg.length ? 'Signal decisions: ' + sg.map(x => `${x.n} ${x.decision}`).join(', ') + '.' : 'No signals were recorded.', `${pos} paper position(s) opened. ${st} loop-stall warning(s), usually the host sleeping rather than a hang.`,
+        'This is a count of what happened, not a performance claim. Zero entries is a legitimate outcome.'];
+      return { text: parts.join(' '), facts: { cycles: cy.c, leads: cy.l, scanned: cy.s, triggered: cy.t, opened: cy.o, signals: sg, stalls: st, positions: pos }, generated_at: new Date().toISOString(), note: 'Template text built only from stored rows; no model-written claims.' };
+    },
+    lab() {
+      const marks = q(`SELECT position_id, marked_at, net_multiple FROM position_marks WHERE valuation_state='PRICED' AND net_multiple IS NOT NULL ORDER BY position_id, marked_at LIMIT 5000`);
+      const pos = {}; for (const m of marks) (pos[m.position_id] ??= []).push({ t: m.marked_at, x: Number(m.net_multiple) });
+      return { positions: Object.entries(pos).slice(0, 60).map(([id, series]) => ({ id, series: series.slice(-200) })), frozen: { size_usd: budget, max_open: maxOpen, tp_gross: cfg.take_profit_multiple, sl_net: cfg.exit_policy.stop_loss_net },
+        note: 'What-if replays recorded PRICED marks only. It never changes the live frozen constants.' };
     },
     reports(id) {
       if (id) return one(`SELECT id, kind, title, body_md, created_at, period FROM reports WHERE id=?`, id) ?? null;
@@ -117,7 +154,16 @@ export function startApp(cfg, { file = 'var/sewl.sqlite', chain = null, gecko = 
         if (m[0] === 'wallet' && m[1]) { if (!chain) return send(503, { error: 'chain data unavailable (no Helius key)' }); try { return send(200, await chain.wallet(m[1])); } catch (e) { return send(e.message === 'bad-address' ? 400 : e.message === 'rate-limited' ? 429 : 502, { error: String(e.message).slice(0, 100) }); } }
         if (m[0] === 'ohlcv' && m[1]) { if (!gecko) return send(503, { error: 'candles unavailable' }); try { return send(200, await gecko.ohlcv(m[1], url.searchParams.get('tf') ?? '1m')); } catch (e) { return send(e.message.startsWith('bad-') ? 400 : e.message === 'rate-limited' ? 429 : 502, { error: String(e.message).slice(0, 100) }); } }
         if (m[0] === 'reports' && m[1]) { const r = api.reports(Number(m[1])); return r ? send(200, r) : send(404, { error: 'not found' }); }
-        if (['dashboard', 'signals', 'momentum', 'wallets', 'evidence', 'health', 'reports'].includes(m[0]) && m.length === 1) return send(200, api[m[0]]());
+        if (['dashboard', 'signals', 'momentum', 'wallets', 'evidence', 'health', 'reports', 'pnl', 'journal', 'weekly', 'lab'].includes(m[0]) && m.length === 1) return send(200, api[m[0]]());
+        if (m[0] === 'evidence' && m.length === 2) { // raw stored payload, so the browser can re-hash it. Localhost/full version only (never in snapshots).
+          if (!/^[0-9a-f-]{36}$/i.test(m[1])) return send(400, { error: 'bad-id' });
+          const row = db.prepare('SELECT id, payload_hash, payload_path FROM source_observations WHERE id=?').get(m[1]); if (!row?.payload_path) return send(404, { error: 'not found' });
+          const f = path.resolve(row.payload_path); if (!f.startsWith(path.resolve('var', 'evidence') + path.sep) || !existsSync(f)) return send(404, { error: 'payload file not available' });
+          if (statSync(f).size > 300_000) return send(413, { error: 'payload too large to verify in the browser' });
+          const text = readFileSync(f, 'utf8');
+          if (/api[-_]?key\s*[=:]|[?&]api-key=/i.test(text) || [process.env.HELIUS_API_KEY, process.env.TELEGRAM_BOT_TOKEN].some(s => s && s.length >= 8 && text.includes(s))) return send(403, { error: 'payload withheld: looks like it contains a credential' });
+          return send(200, { id: row.id, sha256_stored: row.payload_hash, payload: text });
+        }
         return send(404, { error: 'not found' });
       }
       const name = p === '/' ? 'index.html' : p.slice(1);

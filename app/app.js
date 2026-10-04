@@ -20,7 +20,7 @@ const ROUTES = [['', 'Dashboard', 'home'], ['signals', 'Signals', 'sig'], ['wall
 const TAB = ['', 'signals', 'wallets', 'activity', 'health'];
 const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ico[k]}</svg>`;
 
-const PARENT = { coin: 'signals', wallet: 'wallets', momentum: 'activity', evidence: 'activity', reports: 'activity' };
+const PARENT = { coin: 'signals', wallet: 'wallets', momentum: 'activity', evidence: 'activity', reports: 'activity', journal: 'activity', lab: 'activity' };
 function nav(cur) {
   const on = PARENT[cur] ?? cur;
   $('#side').innerHTML = '<div class="brand">SE<b>WL</b> <span class="badge mute">PAPER</span></div>' + ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${on === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
@@ -76,6 +76,7 @@ const V = {
     <div class="card"><h2>Open positions (${d.open_positions.length})</h2>${pos || '<div class="empty">No open positions.</div>'}</div>
     <div class="card"><h2>Recently closed</h2>${d.recent_closed.map((p) => `<div class="row"><span class="mono">${esc(short(p.mint))}</span><span class="sub">${ago(p.closed_at)}</span></div>`).join('') || '<div class="empty">None yet.</div>'}</div>`;
     requestAnimationFrame(() => document.querySelectorAll('.ring .p').forEach((c) => { c.style.strokeDashoffset = c.dataset.to; }));
+    try { $('#view').insertAdjacentHTML('beforeend', await P2.dashExtra()); } catch (_) {}
   },
   async signalsList() {
     const d = await get('signals'); const hid = JSON.parse(localStorage.getItem('sewl_hidden') || '[]'), watch = JSON.parse(localStorage.getItem('sewl_watch') || '[]');
@@ -127,14 +128,15 @@ const V = {
       <div class="sub">score ${esc(w.score ?? 'n/a')} | Wilson ${esc(w.wilson_lower ?? 'n/a')} | PF ${esc(w.profit_factor ?? 'n/a')} | trips ${esc(w.closed_round_trips ?? 'n/a')} | mints ${esc(w.distinct_mints ?? 'n/a')} | parse ${esc(w.parse_coverage ?? 'n/a')} | priced ${esc(w.priced_coverage ?? 'n/a')}</div>
       <div style="margin-top:8px">${w.reasons.map((r) => badge(r, 'mute')).join(' ')}</div></div>`).join('') || '<div class="card empty">No wallets discovered yet (no early pools found in the 60-minute window so far). Missing data stays NULL, never zero.</div>');
   },
-  async evidence() {
+  async evidence(id) {
+    if (id) return P2.evidenceVerify(id);
     const d = await get('evidence');
-    $('#view').innerHTML = head('Evidence', d.total + ' source observations (latest 100 shown)') + banner + d.observations.map((o) => `<div class="card"><div class="row" style="padding:0;border:0"><span class="mono">${esc(o.method)}</span>${badge(o.error_code ?? o.quality_state ?? 'n/a', o.quality_state === 'OK' ? 'ok' : 'bad')}</div>
+    $('#view').innerHTML = head('Evidence', d.total + ' source observations (latest 100 shown)') + banner + d.observations.map((o) => `<div class="card"><div class="row" style="padding:0;border:0"><a class="mono link" href="#/evidence/${esc(o.id)}">${esc(o.method)} &#128274;</a>${badge(o.error_code ?? o.quality_state ?? 'n/a', o.quality_state === 'OK' ? 'ok' : 'bad')}</div>
       <div class="sub">${esc(o.provider)} | HTTP ${esc(o.http_status ?? 'n/a')} | latency ${ms(o.latency_ms)} | ${esc(o.requested_at)}</div><div class="mono">hash ${esc(o.hash ?? 'n/a')}${o.subject_key ? ' | ' + esc(short(o.subject_key, 10)) : ''}</div></div>`).join('');
   },
   async health() {
     const d = await get('health'), st = d.last_startup;
-    $('#view').innerHTML = head('Health', 'Worker and loops') + banner + `
+    $('#view').innerHTML = head('Health', 'Worker and loops') + banner + P2.cockpit(d) + `
     <div class="grid"><div class="card"><div class="lbl">Process uptime</div><div class="kpi sm">${d.process_uptime_s == null ? 'n/a (snapshot)' : d.process_uptime_s >= 3600 ? (d.process_uptime_s / 3600).toFixed(1) + ' h' : Math.round(d.process_uptime_s / 60) + ' min'}</div></div>
       <div class="card"><div class="lbl">Startups logged</div><div class="kpi sm">${d.startups}</div></div>
       <div class="card"><div class="lbl">Last startup</div><div class="kpi sm" style="font-size:15px">${st ? ago(st.at) : 'none'}</div><div class="sub">${st ? esc(st.detail?.version ?? '') : ''}</div></div>
@@ -153,8 +155,11 @@ const V = {
     $('#wf').onsubmit = (e) => { e.preventDefault(); const v = $('#wi').value.trim(); if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) location.hash = '#/wallet/' + v; else $('#wi').classList.add('bad'); };
   },
   async activity() {
-    $('#view').innerHTML = head('Activity', 'Evidence, reports and the scan loop') + banner + `<div class="card">${STATIC_MODE ? '' : '<a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log</span><span>&rsaquo;</span></a>'}<a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a></div>`;
+    const wk = await P2.weekly().catch(() => '');
+    $('#view').innerHTML = head('Activity', 'Journal, narrative, lab and the scan loop') + banner + wk + `<div class="card"><a class="row" href="#/journal" style="text-decoration:none;color:inherit"><span>Decision journal</span><span>&rsaquo;</span></a><a class="row" href="#/lab" style="text-decoration:none;color:inherit"><span>Strategy lab (what-if)</span><span>&rsaquo;</span></a><a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a>${STATIC_MODE ? '' : '<a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log (hash verify)</span><span>&rsaquo;</span></a>'}</div>`;
   },
+  async journal() { return P2.journal(); },
+  async lab() { return P2.lab(); },
   async coin(mint) { const html = await CV.coin(mint); $('#view').innerHTML = html; drawCoin(mint, await get('coin/' + mint)); clearInterval(coinTimer); coinTimer = setInterval(async () => { try { const d = await get('coin/' + mint); const el = $('#px'); if (!el) return clearInterval(coinTimer); const old = el.textContent; el.textContent = price(d.market?.price_usd); if (el.textContent !== old) { el.classList.remove('up', 'dn'); void el.offsetWidth; el.classList.add(Number(d.market?.price_usd) >= 0 ? 'up' : 'dn'); } } catch (_) {} }, 15000); },
   async wallet(addr) { $('#view').innerHTML = await CV.wallet(addr); },
   async reports(id) {
@@ -210,7 +215,7 @@ async function render() {
   nav(route); if (typeof closeSheet === "function") closeSheet();
   $('#view').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
   try { await V[route](id ? (route === 'reports' ? Number(id) : id) : undefined); } catch (e) { $('#view').innerHTML = STATIC_MODE && /snapshot/.test(e.message) ? `<a class="link" href="#/signals">&larr; Back</a><div class="card"><h2>Not in the current snapshot</h2><div class="sub">This public monitoring copy only pre-renders the top coins, open positions and a few wallets, refreshed every ~10 minutes. The full live version (on the host) can open any coin or wallet.</div></div>` : `<div class="card"><h2>Could not load</h2><div class="sub">${esc(e.message)}</div></div>`; }
-  clearInterval(timer); clearInterval(coinTimer); if (!['coin', 'wallet'].includes(route) && (route !== 'reports' || !id)) timer = setInterval(() => V[route](id ? Number(id) : undefined).catch(() => {}), 30000);
+  clearInterval(timer); clearInterval(coinTimer); if (!['coin', 'wallet'].includes(route) && (route !== 'reports' || !id)) timer = setInterval(() => V[route](id ? (route === 'reports' ? Number(id) : id) : undefined).catch(() => {}), 30000);
 }
 addEventListener('hashchange', render); render();
 if ('serviceWorker' in navigator && !STATIC_MODE) navigator.serviceWorker.register('/sw.js').catch(() => {});
