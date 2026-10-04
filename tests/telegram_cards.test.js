@@ -15,7 +15,7 @@ test('PAPER_OPEN card: name, copyable CA, 3 links, time, no n/a, no invented wal
   o.enqueue('signal', { mint: M, decision: 'PAPER_OPEN', name: 'Coin <A>', symbol: 'CA', notional: '20', entry_at: '2026-10-04T08:00:00Z' });
   assert.equal(n(db), 1);
   const t = o.card('signal', JSON.parse(db.prepare(`SELECT payload_json p FROM telegram_outbox`).get().p));
-  assert.match(t, new RegExp(`<code>${M}</code>`)); assert.match(t, /gmgn\.ai\/sol\/token\//); assert.match(t, /web3\.binance\.com/); assert.match(t, /dexscreener\.com\/solana\//);
+  assert.match(t, new RegExp(`<code>${M}</code>`)); assert.match(t, /gmgn\.ai\/sol\/token\//); assert.ok(!/binance/i.test(t), 'Binance link is unverifiable (same 202 for a fake mint), so it is not posted'); assert.match(t, /dexscreener\.com\/solana\//);
   assert.match(t, /Coin &lt;A&gt;/); assert.ok(!/n\/a|undefined|null/i.test(t)); assert.match(t, /no single wallet/);
   assert.ok(!/Wallet:|SOL spent/.test(t));
 });
