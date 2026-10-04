@@ -122,3 +122,7 @@ body{background:#000}.bg-orb{display:none}
 
 .gauge{width:150px;flex:none}.hbs{display:flex;align-items:flex-end;gap:2px;height:60px}.hbs i{flex:1;background:var(--ok);border-radius:2px;min-height:4px}.hbs i.z{background:#2a2f3a}.hbs i.w{background:var(--warn)}
 .rng{width:100%;accent-color:var(--accent);margin:8px 0 16px;height:36px}.pl{white-space:pre-wrap;word-break:break-all;font-size:11px;font-family:var(--mono);color:var(--muted);max-height:50vh;overflow:auto}
+
+@media (prefers-contrast:more){:root{--muted:#c9d1e0}.card{border-color:#3a4150}.chip{border-color:#4b5365}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.chips{flex-wrap:wrap}

@@ -83,7 +83,7 @@ export function buildApi(db, cfg) {
         recent: q(`SELECT at, component, severity, code, detail_json FROM health_events WHERE code!='momentum-cycle' ORDER BY at DESC LIMIT 30`).map(r => ({ ...r, detail: parse(r.detail_json), detail_json: undefined })),
         outbox: q(`SELECT state, COUNT(*) n FROM telegram_outbox GROUP BY state`),
         key_quota: { configured: false, note: 'No API keys configured (keyless public RPC). Per-key quota counters arrive with the key plan (Phase 2).' },
-        helius: (() => { const r = one(`SELECT credits FROM helius_usage WHERE month=?`, new Date().toISOString().slice(0, 7)); return { month: new Date().toISOString().slice(0, 7), used: r?.credits ?? 0, cap: 800000, snapshot_budget: 120000 }; })(),
+        helius: (() => { const r = one(`SELECT credits FROM helius_usage WHERE month=?`, new Date().toISOString().slice(0, 7)); return { month: new Date().toISOString().slice(0, 7), used: r?.credits ?? 0, cap: 800000, snapshot_budget: 120000, by_source: Object.fromEntries(q(`SELECT source, credits FROM helius_usage_source WHERE month=?`, new Date().toISOString().slice(0, 7)).map(r => [r.source, r.credits])) }; })(),
         cycles_6h: q(`SELECT substr(at,1,15) b, COUNT(*) n FROM health_events WHERE code='momentum-cycle' AND at >= ? GROUP BY 1 ORDER BY 1`, new Date(Date.now() - 6 * 3600_000).toISOString()),
         stall_events: q(`SELECT at, detail_json FROM health_events WHERE code='loop-stalled' ORDER BY at DESC LIMIT 20`).map(s => ({ at: s.at, age_s: parse(s.detail_json)?.last_done_age_s ?? null })),
         stall_note: 'loop-stalled = a loop did not finish within 3x its interval: a hang OR a host pause (this sandbox freezes between sessions).' };

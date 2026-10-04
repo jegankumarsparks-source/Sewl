@@ -20,7 +20,7 @@ const ROUTES = [['', 'Dashboard', 'home'], ['signals', 'Signals', 'sig'], ['wall
 const TAB = ['', 'signals', 'wallets', 'activity', 'health'];
 const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ico[k]}</svg>`;
 
-const PARENT = { coin: 'signals', wallet: 'wallets', momentum: 'activity', evidence: 'activity', reports: 'activity', journal: 'activity', lab: 'activity' };
+const PARENT = { coin: 'signals', wallet: 'wallets', momentum: 'activity', evidence: 'activity', reports: 'activity', journal: 'activity', lab: 'activity', alerts: 'activity' };
 function nav(cur) {
   const on = PARENT[cur] ?? cur;
   $('#side').innerHTML = '<div class="brand">SE<b>WL</b> <span class="badge mute">PAPER</span></div>' + ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${on === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
@@ -80,10 +80,10 @@ const V = {
   },
   async signalsList() {
     const d = await get('signals'); const hid = JSON.parse(localStorage.getItem('sewl_hidden') || '[]'), watch = JSON.parse(localStorage.getItem('sewl_watch') || '[]');
-    const seen = Number(localStorage.getItem('sewl_seen') || 0); const fresh = d.signals.filter((s) => Date.parse(s.qualified_at) > seen && s.decision === 'PAPER_OPEN');
+    const seen = Number(localStorage.getItem('sewl_seen') || 0); const ap = P2.alertPrefs(), qn = P2.quietNow(ap); const fresh = d.signals.filter((s) => Date.parse(s.qualified_at) > seen && s.decision === 'PAPER_OPEN' && (s.origin === 'whale' ? ap.whale : ap.momentum));
     if (d.signals[0]) localStorage.setItem('sewl_seen', String(Math.max(seen, Date.parse(d.signals[0].qualified_at) || 0)));
-    if (fresh.length && 'Notification' in window && Notification.permission === 'granted') new Notification('SEWL (paper)', { body: fresh.length + ' new paper entry signal(s)' });
-    const alertBar = fresh.length ? `<div class="card alert">New paper entry since your last visit: ${fresh.map((s) => esc(short(s.mint, 4))).join(', ')}</div>` : '';
+    if (fresh.length && !qn && 'Notification' in window && Notification.permission === 'granted') new Notification('SEWL (paper)', { body: fresh.length + ' new paper entry signal(s)' });
+    const alertBar = !fresh.length || qn ? '' : ap.collapse ? `<div class="card alert">${fresh.length} new paper entr${fresh.length === 1 ? 'y' : 'ies'} since your last visit</div>` : `<div class="card alert">New paper entry since your last visit: ${fresh.map((s) => esc(short(s.mint, 4))).join(', ')}</div>`;
     const cards = d.signals.filter((s) => !hid.includes(s.id)).map((s) => {
       const lat = s.origin === 'momentum' ? `<div class="sub">latency (upper bound): detect ${ms(s.detection_ms != null && s.candle_start_ms != null ? s.detection_ms - s.candle_start_ms : null)} | entry ${ms(s.latency_ms)}</div>` : '';
       const ck = s.checks ? Object.entries(s.checks).filter(([k]) => k !== 'extensions_decoded').map(([k, v]) => `<div class="row" style="padding:6px 0"><span class="sub">${esc(k.replace(/_/g, ' '))}</span>${badge(v, v === 'PASS' || v === 'ROUTE_OK' ? 'ok' : v === 'FAIL' ? 'bad' : 'warn')}</div>`).join('') : '<div class="sub">No risk assessment stored for this signal (not evaluated).</div>';
@@ -156,9 +156,10 @@ const V = {
   },
   async activity() {
     const wk = await P2.weekly().catch(() => '');
-    $('#view').innerHTML = head('Activity', 'Journal, narrative, lab and the scan loop') + banner + wk + `<div class="card"><a class="row" href="#/journal" style="text-decoration:none;color:inherit"><span>Decision journal</span><span>&rsaquo;</span></a><a class="row" href="#/lab" style="text-decoration:none;color:inherit"><span>Strategy lab (what-if)</span><span>&rsaquo;</span></a><a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a>${STATIC_MODE ? '' : '<a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log (hash verify)</span><span>&rsaquo;</span></a>'}</div>`;
+    $('#view').innerHTML = head('Activity', 'Journal, narrative, lab and the scan loop') + banner + wk + `<div class="card"><a class="row" href="#/journal" style="text-decoration:none;color:inherit"><span>Decision journal</span><span>&rsaquo;</span></a><a class="row" href="#/alerts" style="text-decoration:none;color:inherit"><span>Alert settings</span><span>&rsaquo;</span></a><a class="row" href="#/lab" style="text-decoration:none;color:inherit"><span>Strategy lab (what-if)</span><span>&rsaquo;</span></a><a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a>${STATIC_MODE ? '' : '<a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log (hash verify)</span><span>&rsaquo;</span></a>'}</div>`;
   },
   async journal() { return P2.journal(); },
+  async alerts() { return P2.alerts(); },
   async lab() { return P2.lab(); },
   async coin(mint) { const html = await CV.coin(mint); $('#view').innerHTML = html; drawCoin(mint, await get('coin/' + mint)); clearInterval(coinTimer); coinTimer = setInterval(async () => { try { const d = await get('coin/' + mint); const el = $('#px'); if (!el) return clearInterval(coinTimer); const old = el.textContent; el.textContent = price(d.market?.price_usd); if (el.textContent !== old) { el.classList.remove('up', 'dn'); void el.offsetWidth; el.classList.add(Number(d.market?.price_usd) >= 0 ? 'up' : 'dn'); } } catch (_) {} }, 15000); },
   async wallet(addr) { $('#view').innerHTML = await CV.wallet(addr); },
