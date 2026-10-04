@@ -16,6 +16,7 @@ export class Outbox {
       case 'milestone': return `📈 MILESTONE\nposition: ${esc(p.position)}\nmint: ${esc(p.mint)}\n${p.multiple}X first observed\nliquidation estimate: $${p.liquidation} (budget $${p.budget})\nPaper mark only - NOT booked profit.`;
       case 'exit': return `🔴 PAPER EXIT\nposition: ${esc(p.position)}\nmint: ${esc(p.mint)}\nreason: ${esc(p.reason)}\nproceeds: $${p.proceeds} | basis: $${p.basis}\nrealized P&L: $${p.pnl}`;
       case 'digest': return `📋 DAILY DIGEST\ncash: $${p.cash}\nrealized P&L: $${p.realized}\nequity: ${p.equity ?? 'UNPRICEABLE'}\nopen positions: ${p.open}\nstate: ${p.state}`;
+      case 'boot': return `✅ SEWL boot ok\npaper-only worker alive\nat: ${esc(p.at)}`;
       case 'complete': return `🏁 EXPERIMENT COMPLETE\ntarget equity reached: $${p.equity}\nno new entries are allowed now.`;
       default: return esc(JSON.stringify(p));
     }

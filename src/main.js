@@ -9,7 +9,7 @@ import { Outbox } from './telegram.js';
 import { reconstructHistory, evaluateWallet } from './wallets.js';
 import { detectBuys } from './detection.js';
 import { processBuy } from './signal.js';
-import { markAndExitCycle, getExperiment } from './paper.js';
+import { markAndExitCycle, getExperiment, conservativeEquity } from './paper.js';
 
 const cfg = JSON.parse(readFileSync('config/experiment.json', 'utf8'));
 if (existsSync('.env')) {
@@ -119,7 +119,8 @@ async function markCycle() {
 
 async function digestCycle() {
   const exp = getExperiment(db);
-  const e = await markCycle();
+  await markCycle();
+  const e = conservativeEquity(db);
   const open = db.prepare(`SELECT COUNT(*) c FROM paper_positions WHERE state='OPEN'`).get().c;
   const realizedRow = db.prepare(`SELECT
     COALESCE((SELECT balance_usd FROM accounts WHERE name='realized_gain'),'0') g,
@@ -162,5 +163,15 @@ setInterval(() => { // stall heartbeat: catches hangs, not just crashes
     }
   }
 }, 60_000).unref();
-setInterval(digestCycle, 24 * 3600 * 1000).unref();
+// Daily digest at a fixed hour (IST), once per IST calendar day; restart-safe via health_events.
+async function digestTick() {
+  const h = cfg.digest_hour_ist ?? 9;
+  const ist = new Date(Date.now() + 5.5 * 3600 * 1000); const day = ist.toISOString().slice(0, 10);
+  if (ist.getUTCHours() < h) return;
+  const done = db.prepare(`SELECT 1 FROM health_events WHERE code='digest-sent' AND detail_json LIKE ?`).get(`%${day}%`);
+  if (done) return;
+  await digestCycle();
+  db.prepare(`INSERT INTO health_events (id, component, at, severity, code, detail_json) VALUES (?,?,?,?,?,?)`).run(uuid(), 'digest', nowIso(), 'INFO', 'digest-sent', JSON.stringify({ day, hour_ist: h }));
+}
+setInterval(() => digestTick().catch((e) => health("digest", "ERROR", "digest-failed", { error: String(e.message ?? e).slice(0, 200) })), 60 * 1000).unref();
 process.on('SIGINT', () => { stopped = true; console.log('stopping gracefully'); setTimeout(() => process.exit(0), 500); });

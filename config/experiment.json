@@ -22,6 +22,7 @@
   "mark_seconds": 120,
   "discovery_cadence_minutes": 15,
   "outbox_flush_seconds": 30,
+  "digest_hour_ist": 9,
   "quality_daily": true,
   "discovery": {
     "max_qualified_wallets": 12,
