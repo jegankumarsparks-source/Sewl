@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openDb } from '../src/db.js';
 import { startApp } from '../src/app.js';
-import { fifoPnl, walletTrades, creatorOf, createdMints, Chain, validAddress } from '../src/chain.js';
+import { fifoPnl, walletTrades, creatorOf, createdMints, Chain, validAddress, auditMint } from '../src/chain.js';
 import { GeckoTerminal } from '../src/sources/geckoterminal.js';
 
 const pump = JSON.parse(readFileSync(new URL('./fixtures/pump_txs.json', import.meta.url))).txs;
@@ -69,4 +69,11 @@ test('app routes: markets from worker state, coin/wallet 503 without chain, 400 
   const chain = { coin: async (m) => { if (m === 'bad') throw new Error('bad-address'); return { mint: m }; }, wallet: async () => { throw new Error('rate-limited'); } };
   const srv2 = startApp(cfg, { file, state, chain, gecko: null }); const b2 = `http://127.0.0.1:${await listen(srv2)}`;
   try { assert.equal((await fetch(b2 + '/api/coin/bad')).status, 400); assert.equal((await fetch(b2 + '/api/coin/abc')).status, 200); assert.equal((await fetch(b2 + '/api/wallet/abc')).status, 429); } finally { srv2.close(); }
+});
+
+test('auditMint on the real Token-2022 mint: authorities revoked, extensions named, unknown ids flagged unsafe', () => {
+  const f = JSON.parse(readFileSync(new URL('./fixtures/token2022_mint.json', import.meta.url))); const a = auditMint(f.account);
+  assert.equal(a.ok, true); assert.equal(a.token_2022, true); assert.ok(a.extensions.length >= 1);
+  assert.ok(a.extensions.every(e => e.allowed === (e.type === 18 || e.type === 19)));
+  assert.equal(auditMint(null), null);
 });
