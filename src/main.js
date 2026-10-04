@@ -34,6 +34,8 @@ const dex = new Dexscreener({ db });
 const jupiter = new Jupiter({ db });
 const coingecko = new CoinGecko({ db });
 const helius = new Helius({ db, monthlyCap: cfg.helius_monthly_credit_cap ?? null });
+if (!keyless) rpc.meter = helius; // every Helius RPC call is now counted and capped, tagged by loop
+import { withSource } from './meter.js';
 const deps = { cfg, rpc, dex, jupiter, coingecko, outbox, helius, onCreditCap: ({ used, cap }) => { health('helius', 'WARN', 'helius-credit-cap', { used, cap, fallback: 'dexscreener-only' }); outbox.enqueue('warn', { text: `Helius monthly credit cap reached (${used}/${cap}). Helius lead discovery and exact-timing lookups are OFF until next month. DexScreener-only leads continue.` }); } };
 
 function health(component, severity, code, detail) {
@@ -153,7 +155,8 @@ console.log('SEWL worker starting. mode=run keyless=' + keyless);
 console.log('PAPER TRADING ONLY. $' + cfg.starting_cash_usd + ' -> target $' + cfg.target_equity_usd + ' (latch, not a promise).');
 let stopped = false;
 const lastDone = new Map(); const loopEvery = new Map(); const stallWarned = new Map();
-async function loop(name, seconds, fn) {
+async function loop(name, seconds, fn0) {
+  const fn = () => withSource(name, fn0);
   loopEvery.set(name, seconds); lastDone.set(name, Date.now());
   while (!stopped) {
     try { await fn(); lastDone.set(name, Date.now()); } catch (e) { health(name, 'ERROR', 'cycle-crash', { e: String(e).slice(0, 200) }); }
@@ -166,7 +169,7 @@ try { const srv = startApp(cfg, { chain: appChain, gecko: appGecko, state: deps.
 
 // Static snapshots for the public monitoring copy: every 10 min, credit-budgeted (see src/snapshot.js). Read-only.
 const snapSecrets = [process.env.HELIUS_API_KEY, process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID].filter(Boolean);
-async function snapTick() { try { const r = await writeSnapshots({ db, cfg, state: deps.leadState ?? {}, chain: appChain, gecko: appGecko, helius, secrets: snapSecrets, dir: 'site/snap' }); health('snapshot', r.rejected.length ? 'WARN' : 'INFO', 'snapshot-written', { files: r.written.length, rejected: r.rejected.length, credits: r.credits }); } catch (e) { health('snapshot', 'ERROR', 'snapshot-failed', { error: String(e.message ?? e).slice(0, 200) }); } }
+async function snapTick() { await withSource('snapshots', async () => { try { const r = await writeSnapshots({ db, cfg, state: deps.leadState ?? {}, chain: appChain, gecko: appGecko, helius, secrets: snapSecrets, dir: 'site/snap' }); health('snapshot', r.rejected.length ? 'WARN' : 'INFO', 'snapshot-written', { files: r.written.length, rejected: r.rejected.length, credits: r.credits }); } catch (e) { health('snapshot', 'ERROR', 'snapshot-failed', { error: String(e.message ?? e).slice(0, 200) }); } }); }
 setTimeout(() => snapTick(), 90 * 1000).unref(); setInterval(() => snapTick(), 10 * 60 * 1000).unref();
 loop('discovery', cfg.discovery_cadence_minutes * 60, discoverCycle);
 loop('history', cfg.discovery.history_cadence_seconds ?? 1800, historyCycle);
