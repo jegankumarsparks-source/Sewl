@@ -9,7 +9,6 @@ import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
 import { Rpc, Quota } from './rpc.js';
 import { Dexscreener } from './sources/dexscreener.js';
-import { Birdeye } from './sources/birdeye.js';
 import { Jupiter } from './sources/jupiter.js';
 import { CoinGecko } from './sources/coingecko.js';
 import { Outbox } from './telegram.js';
@@ -31,9 +30,7 @@ const keyless = !process.env.HELIUS_API_KEY;
 const endpoint = keyless ? 'https://api.mainnet.solana.com'
   : `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
 const rpc = new Rpc({ endpoint, quota: new Quota(keyless ? 30 : 50, 10_000), db });
-const dex = cfg.market_source === 'birdeye'
-  ? new Birdeye({ db, perCycle: Number(cfg.birdeye?.per_cycle ?? 15) })
-  : new Dexscreener({ db });
+const dex = new Dexscreener({ db });
 const jupiter = new Jupiter({ db });
 const coingecko = new CoinGecko({ db });
 const helius = new Helius({ db, monthlyCap: cfg.helius_monthly_credit_cap ?? null });
@@ -151,7 +148,7 @@ if (mode === 'discover') { console.log(await discoverCycle()); process.exit(0); 
 if (mode === 'watch') { await watchCycle(); console.log('watch cycle done'); process.exit(0); }
 if (mode === 'mark') { await markCycle(); console.log('mark cycle done'); process.exit(0); }
 if (mode === 'flush') { console.log(await outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID)); process.exit(0); }
-if (mode === 'once') { console.log(await discoverCycle()); await historyCycle(); await watchCycle(); await digestCycle(); console.log(await outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID)); process.exit(0); }
+if (mode === 'once') { const { momentumCycle } = await import('./momentum.js'); console.log(await discoverCycle()); await momentumCycle(); await historyCycle(); await watchCycle(); await markCycle(); await digestCycle(); console.log(await outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID)); process.exit(0); }
 
 health('worker', 'INFO', 'startup', { version: JSON.parse(readFileSync('package.json', 'utf8')).version + '+momentum-v1', keyless, mode: process.argv[2] ?? 'run', pid: process.pid });
 console.log('SEWL worker starting. mode=run keyless=' + keyless);
