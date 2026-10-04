@@ -1,3 +1,4 @@
+import { pairCreatedMs as pairCreatedMsOf } from './pairs.js';
 import { d, div, mul, cmp, fmt, floorRaw } from './decimal.js';
 import { uuid, nowIso } from './db.js';
 import { validateToken } from './validation.js';
@@ -33,7 +34,7 @@ export async function processBuy(db, deps, buy) {
   if (pairs?.data?.length) {
     const p = pairs.data.find(x => x.chainId === 'solana');
     if (!p) { reasons.push('solana-pair-missing'); return decide(db, deps, buy, 'DATA_INCOMPLETE', reasons); }
-    pairCreatedMs = p.pairCreatedAtMs ?? null;
+    pairCreatedMs = pairCreatedMsOf(p);
     db.prepare(`INSERT INTO market_snapshots (id, mint, pool_address, observed_at, price_usd, liquidity_usd, market_cap_usd, fdv_usd, evidence_id, freshness_state)
       VALUES (?,?,?,?,?,?,?,?,?, 'FRESH')`)
       .run(uuid(), buy.mint, p.pairAddress ?? null, nowIso(), p.priceUsd ?? null, p.liquidity?.usd != null ? String(p.liquidity.usd) : null, p.marketCap ?? null, p.fdv ?? null, pairs.evidenceId);

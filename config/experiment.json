@@ -27,8 +27,8 @@
   "quality_daily": true,
   "discovery": {
     "max_qualified_wallets": 12,
-    "pairs_per_cycle": 10,
-    "early_swap_sample": 200,
+    "pairs_per_cycle": 3,
+    "early_swap_sample": 40,
     "early_window_minutes": 60,
     "new_candidates_per_day": 20,
     "wallet_history_tx_cap": 300
