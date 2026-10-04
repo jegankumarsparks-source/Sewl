@@ -32,7 +32,7 @@ function world({ withKey, dexLeads = 30, heliusMints = 40, trigger = false }) {
   const dex = { latestBoosts: async () => ({ data: dexIds.map(a => ({ chainId: 'solana', tokenAddress: a })) }), latestProfiles: async () => ({ data: [] }),
     tokensBatch: async (ms) => { asked.push(...ms); return { data: ms.map(m => mkPair(m, trigger && m === 'HEL3' ? { priceChange: { m5: 500 }, volume: { m5: 90000, h1: 100000 } } : {})) }; } };
   let calls = 0;
-  const helius = { enabled: withKey, credits: 0, activeMints: async () => { calls++; helius.credits += 10; return { mints: hMints }; } };
+  const helius = { enabled: withKey, credits: 0, creditsUsed: () => helius.credits, capReached: () => false, activeMints: async () => { calls++; helius.credits += 10; return { mints: hMints }; } };
   const deps = { cfg, dex, helius, leadPrograms: ['P1'], jupiter: {}, outbox: null, validate: async () => ({ id: null, result: 'REJECTED', unknown: [], decimals: 6 }) };
   return { deps, asked, calls: () => calls };
 }

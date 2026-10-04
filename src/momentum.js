@@ -94,17 +94,23 @@ export async function momentumCycle(db, deps) {
   // Extra lead source (config-gated, inert without a Helius key): mints with live Pump.fun / PumpSwap swaps.
   // Same trigger conditions and gates apply to every lead; this only widens what gets looked at.
   const hl = cfg.momentum.helius_leads; let heliusAdded = 0, heliusSeen = 0, heliusErr = null;
+  let ranDiscovery = false;
   const state = deps.leadState ??= { cycle: 0 };
   state.cycle++;
   if (hl?.enabled && deps.helius?.enabled && (state.cycle - 1) % Number(hl.every_cycles) === 0) {
-    const found = new Map();
+    const found = new Map(); let capHit = false; ranDiscovery = true;
     for (const prog of (deps.leadPrograms ?? Object.values(LEAD_PROGRAMS))) {
       try { const r = await deps.helius.activeMints(prog, { limit: Number(hl.per_program_limit) }); for (const [mint, n] of r.mints) found.set(mint, (found.get(mint) ?? 0) + n); }
-      catch (e) { heliusErr = String(e.message).slice(0, 40); }
+      catch (e) { heliusErr = String(e.message).slice(0, 40); if (e.message === 'helius-credit-cap') { capHit = true; break; } }
     }
+    if (capHit) { state.heliusLeads = []; if (deps.helius.markCapNotified()) deps.onCreditCap?.({ used: deps.helius.creditsUsed(), cap: deps.helius.monthlyCap }); }
+    else {
     heliusSeen = found.size;
     state.heliusLeads = [...found.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, Number(hl.max_leads));
+    }
   }
+  // After the cap is reached no discovery runs; leads fall back to DexScreener only.
+  if (!ranDiscovery && deps.helius?.capReached?.()) { state.heliusLeads = []; heliusErr = 'helius-credit-cap'; if (deps.helius.markCapNotified()) deps.onCreditCap?.({ used: deps.helius.creditsUsed(), cap: deps.helius.monthlyCap }); }
   const all = new Set(dexLeads);
   for (const mt of state.heliusLeads ?? []) if (!all.has(mt)) { all.add(mt); heliusAdded++; }
   const mints = [...all];
@@ -124,7 +130,7 @@ export async function momentumCycle(db, deps) {
     const r = await processMomentum(db, deps, p);
     if (r.decision === 'PAPER_OPEN') opened++;
   }
-  return { leads: mints.length, leads_dex: dexLeads.size, leads_helius_new: heliusAdded, helius_seen: heliusSeen, helius_credits: deps.helius?.credits ?? 0, helius_error: heliusErr, scanned: best.size, triggered, opened };
+  return { leads: mints.length, leads_dex: dexLeads.size, leads_helius_new: heliusAdded, helius_seen: heliusSeen, helius_credits: deps.helius?.creditsUsed?.() ?? 0, helius_error: heliusErr, scanned: best.size, triggered, opened };
 }
 
 // Weekly-style latency proof from stored fields (NULL rows excluded and counted).

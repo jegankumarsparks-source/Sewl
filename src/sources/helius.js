@@ -5,13 +5,22 @@ import { recordObservation } from '../evidence.js';
 
 const BASE = 'https://api.helius.xyz';
 export class Helius {
-  constructor({ db, apiKey = process.env.HELIUS_API_KEY, quota = new Quota(20, 60_000), fetchImpl = fetch } = {}) {
-    this.db = db; this.apiKey = apiKey; this.quota = quota; this.fetch = fetchImpl;
+  constructor({ db, apiKey = process.env.HELIUS_API_KEY, quota = new Quota(20, 60_000), fetchImpl = fetch, monthlyCap = null, now = () => new Date() } = {}) {
+    this.monthlyCap = monthlyCap; this.now = now; this.db = db; this.apiKey = apiKey; this.quota = quota; this.fetch = fetchImpl;
   }
   get enabled() { return Boolean(this.apiKey); }
+  // Persistent monthly credit counter (UTC month). Charged when a request is made, so failed calls still count (conservative).
+  monthKey() { return this.now().toISOString().slice(0, 7); }
+  creditsUsed() { return this.db.prepare('SELECT credits FROM helius_usage WHERE month=?').get(this.monthKey())?.credits ?? 0; }
+  capReached() { return this.monthlyCap != null && this.creditsUsed() >= Number(this.monthlyCap); }
+  charge(n) { this.db.prepare('INSERT INTO helius_usage (month, credits) VALUES (?,?) ON CONFLICT(month) DO UPDATE SET credits = credits + excluded.credits').run(this.monthKey(), n); this.credits = (this.credits ?? 0) + n; }
+  // True exactly once per month, the first time the cap blocks a call (drives the single warning card).
+  markCapNotified() { const r = this.db.prepare('UPDATE helius_usage SET cap_notified=1 WHERE month=? AND cap_notified=0').run(this.monthKey()); return r.changes > 0; }
+  guard(cost) { if (this.capReached() || (this.monthlyCap != null && this.creditsUsed() + cost > Number(this.monthlyCap))) throw new Error('helius-credit-cap'); this.charge(cost); }
   // Parsed SWAPs touching `mint` since `sinceSec` (unix seconds, block time). Newest first.
   async swapsSince(mint, sinceSec, { limit = 100, timeoutMs = 4000 } = {}) {
     if (!this.enabled) throw new Error('helius-disabled');
+    this.guard(100); // Enhanced Transactions API = 100 credits per request
     await this.quota.take();
     const requestedAt = new Date().toISOString();
     const redacted = `/v0/addresses/${mint}/transactions?type=SWAP&gte-time=${sinceSec}&commitment=confirmed&limit=${limit}`;
@@ -44,6 +53,7 @@ export function mintsFromTxs(txs) {
 }
 Helius.prototype.activeMints = async function (program, { limit = 100, timeoutMs = 8000 } = {}) {
   if (!this.enabled) throw new Error('helius-disabled');
+  this.guard(Math.max(10, Math.ceil(limit / 100) * 10)); // getTransactionsForAddress = 10 credits per 100 full txs
   await this.quota.take();
   const requestedAt = new Date().toISOString();
   const method = `POST getTransactionsForAddress ${program} limit=${limit}`;
@@ -60,7 +70,6 @@ Helius.prototype.activeMints = async function (program, { limit = 100, timeoutMs
   const data = j?.result?.data;
   const evidenceId = recordObservation(this.db, { provider: 'helius-rpc', method, subject: program, requestedAt, body: Array.isArray(data) ? { txs: data.length, newest_blockTime: data[0]?.blockTime ?? null } : { error: j?.error?.message ?? null }, httpStatus: res.status, status: res.ok && Array.isArray(data) ? 'OK' : 'ERROR' });
   if (!res.ok || !Array.isArray(data)) throw new Error('helius-rpc ' + res.status);
-  this.credits = (this.credits ?? 0) + Math.max(10, Math.ceil(data.length / 100) * 10);
   return { mints: mintsFromTxs(data), txs: data.length, evidenceId, receivedAt: new Date().toISOString() };
 };
 

@@ -117,6 +117,9 @@ CREATE TABLE IF NOT EXISTS health_events (
 CREATE INDEX IF NOT EXISTS idx_trades_wallet_time ON wallet_trades(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_marks_pos ON position_marks(position_id);
 CREATE INDEX IF NOT EXISTS idx_outbox_state ON telegram_outbox(state, next_attempt_at);
+CREATE TABLE IF NOT EXISTS helius_usage (
+  month TEXT PRIMARY KEY, credits INTEGER NOT NULL DEFAULT 0, cap_notified INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL, body_md TEXT NOT NULL,
   created_at TEXT NOT NULL, period TEXT NULL

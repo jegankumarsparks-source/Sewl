@@ -29,8 +29,8 @@ const rpc = new Rpc({ endpoint, quota: new Quota(keyless ? 30 : 50, 10_000), db 
 const dex = new Dexscreener({ db });
 const jupiter = new Jupiter({ db });
 const coingecko = new CoinGecko({ db });
-const helius = new Helius({ db });
-const deps = { cfg, rpc, dex, jupiter, coingecko, outbox, helius };
+const helius = new Helius({ db, monthlyCap: cfg.helius_monthly_credit_cap ?? null });
+const deps = { cfg, rpc, dex, jupiter, coingecko, outbox, helius, onCreditCap: ({ used, cap }) => { health('helius', 'WARN', 'helius-credit-cap', { used, cap, fallback: 'dexscreener-only' }); outbox.enqueue('warn', { text: `Helius monthly credit cap reached (${used}/${cap}). Helius lead discovery and exact-timing lookups are OFF until next month. DexScreener-only leads continue.` }); } };
 
 function health(component, severity, code, detail) {
   db.prepare(`INSERT INTO health_events (id, component, at, severity, code, detail_json) VALUES (?,?,?,?,?,?)`)
