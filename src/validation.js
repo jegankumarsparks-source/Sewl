@@ -39,8 +39,10 @@ export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
   let result = 'QUALIFIED';
   const set = (k, v, unknownIf = null) => { checks[k] = v; if (v === 'UNKNOWN' && unknownIf) { unknown.push(unknownIf); result = 'DATA_INCOMPLETE'; } if (v === 'FAIL') result = 'REJECTED'; };
 
-  const ai = await rpc.getAccountInfo(mint).catch(() => null);
-  if (!ai?.result?.value) { checks.identity = 'FAIL'; return finish(db, mint, checks, evidenceIds, unknown, 'REJECTED'); }
+  let rpcFailed = false;
+  const ai = await rpc.getAccountInfo(mint).catch(() => { rpcFailed = true; return null; });
+  if (rpcFailed || !ai?.result) { checks.identity = 'UNKNOWN'; unknown.push('account-info-unavailable'); return finish(db, mint, checks, evidenceIds, unknown, 'DATA_INCOMPLETE'); }
+  if (!ai.result.value) { checks.identity = 'FAIL'; return finish(db, mint, checks, evidenceIds, unknown, 'REJECTED'); }
   const prog = ai.result.value.owner; evidenceIds.push(ai.evidenceId);
   if (prog !== TOKEN_PROGRAM && prog !== TOKEN_2022) { checks.identity = 'FAIL'; return finish(db, mint, checks, evidenceIds, unknown, 'REJECTED'); }
   checks.identity = 'PASS';
@@ -76,8 +78,8 @@ export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
       const ownerAmts = [...byOwner.values()].sort((a, b) => (a < b ? 1 : -1));
       const largestOwner = ownerAmts[0] || 0n;
       const topTotal = ownerAmts.reduce((a, b) => a + b, 0n);
-      checks.largest_nonpool_owner_15pct = cmp(div(largestOwner * d(100), supply), d(15)) <= 0 ? 'PASS' : 'FAIL';
-      checks.top_owners_50pct = cmp(div(topTotal * d(100), supply), d(50)) <= 0 ? 'PASS' : 'FAIL';
+      checks.largest_nonpool_owner_15pct = cmp(div(largestOwner * d(100), supply), mul(d(100), d(cfg.validation.max_largest_owner))) <= 0 ? 'PASS' : 'FAIL';
+      checks.top_owners_50pct = cmp(div(topTotal * d(100), supply), mul(d(100), d(cfg.validation.max_top_owners))) <= 0 ? 'PASS' : 'FAIL';
       if (unclassified > 0n) { checks.owner_classification = 'PARTIAL'; unknown.push('largest-accounts-unclassified'); if (result === 'QUALIFIED') result = 'DATA_INCOMPLETE'; }
       else checks.owner_classification = 'PASS';
     } else { checks.owner_classification = 'UNKNOWN'; unknown.push('owner-resolve-failed'); result = 'DATA_INCOMPLETE'; }

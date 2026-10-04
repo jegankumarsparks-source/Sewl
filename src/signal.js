@@ -42,6 +42,7 @@ export async function processBuy(db, deps, buy) {
 
   // 4. token validation risk gates
   const risk = await validateToken(db, rpc, dex, jupiter, buy.mint, cfg);
+  if (risk.result === 'QUALIFIED' && Object.values(risk.checks ?? {}).includes('FAIL')) risk.result = 'REJECTED'; // defense in depth
   if (!pass(risk.result === 'QUALIFIED', 'risk:' + risk.result)) return decide(db, deps, buy, risk.result === 'REJECTED' ? 'REJECTED' : 'DATA_INCOMPLETE', [...reasons, ...risk.unknown]);
 
   // 5. chase test: current quote <= 1.5x the whale's execution price

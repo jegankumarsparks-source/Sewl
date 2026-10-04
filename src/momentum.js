@@ -53,6 +53,7 @@ export async function processMomentum(db, deps, pair, { nowMs = Date.now() } = {
   let risk;
   try { risk = await withDeadline((deps.validate ?? validateToken)(db, deps.rpc, deps.dex, jupiter, mint, cfg), Number(m.validation_deadline_seconds) * 1000); }
   catch (e) { return finish('DATA_INCOMPLETE', [String(e.message).slice(0, 60)]); }
+  if (risk.result === 'QUALIFIED' && Object.values(risk.checks ?? {}).includes('FAIL')) risk.result = 'REJECTED'; // defense in depth
   if (risk.result !== 'QUALIFIED') return finish(risk.result === 'REJECTED' ? 'REJECTED' : 'DATA_INCOMPLETE', ['risk:' + risk.result, ...(risk.unknown ?? [])], { riskId: risk.id, risk: risk.result });
   const eff = d(cfg.position_budget_usd) - d(cfg.friction.entry_fee_usd);
   let units, qeId;
