@@ -59,11 +59,11 @@ Row counts now: wallets 0, signals 0, paper_positions 0, telegram_outbox 0, jour
 
 ## 3. Live status (11:35 IST)
 - Processes: one worker loop (restart loop + node), one publisher loop. Startup health rows for the current build: 1.
-- Momentum (since 10:55 swap): 13 cycle rows, about 390 leads / pairs scanned, 0 triggered, 0 opened, 0 momentum signals. Cycles per wall hour are far below 60 because of the host freeze (section 5).
+- Momentum (since 10:55 swap): 14 cycle rows, 420 pairs scanned, 0 triggered, 0 opened, 0 momentum signals. Cycles per wall hour are far below 60 because of the host freeze (section 5).
 - Live trigger check on real data: 30 pairs -> 0 triggers. Reasons: surge < 100% (23), volume surge < 5x (25), pool > 6 h (11), liquidity < $25k or unknown (18).
 - Paper account: cash $500.00, equity $500.00, 0 positions, 0 signals.
 - source_observations trend (UTC hour of request): 04h 171, 05h 90, 06h 6 (total 267, all status OK, 0 TIMEOUT). Before the hotfix restart it sat flat at 114 for 29.5 min (latest 04:20:30Z while server time was 04:50:03Z).
-- health_events summary: INFO momentum-cycle 13, INFO worker/startup 1, WARN loop-stalled 10 (outbox 5, momentum 3, mark 1, watch 1). ERROR: 0. Every WARN lines up with a resume gap after a host freeze (ages 123-258 s on 30-120 s loops); none was a confirmed hang.
+- health_events summary: INFO momentum-cycle 14, INFO worker/startup 1, WARN loop-stalled 10 (outbox 5, momentum 3, mark 1, watch 1). ERROR: 0. Every WARN lines up with a resume gap after a host freeze (ages 123-258 s on 30-120 s loops); none was a confirmed hang.
 - Page: live, HTTP 200; data.json refreshes at most once per hour when unchanged.
 
 ## 4. Test inventory (23 tests, 23 pass, 0 fail; `npm test` = `node --test tests/paper.test.js tests/timeout.test.js tests/momentum.test.js`)
