@@ -1,4 +1,4 @@
-import { firstSwapMs } from './sources/helius.js';
+import { firstSwapMs, LEAD_PROGRAMS } from './sources/helius.js';
 import { d, mul, fmt, cmp, floorRaw } from './decimal.js';
 import { uuid, nowIso } from './db.js';
 import { validateToken } from './validation.js';
@@ -90,10 +90,27 @@ export async function momentumCycle(db, deps) {
   for (const fn of ['latestBoosts', 'latestProfiles']) {
     try { (await dex[fn]()).data?.filter(x => x.chainId === 'solana').forEach(x => leads.add(x.tokenAddress)); } catch { }
   }
-  const mints = [...leads].slice(0, Number(cfg.momentum.max_leads_per_cycle));
+  const dexLeads = new Set([...leads].slice(0, Number(cfg.momentum.max_leads_per_cycle)));
+  // Extra lead source (config-gated, inert without a Helius key): mints with live Pump.fun / PumpSwap swaps.
+  // Same trigger conditions and gates apply to every lead; this only widens what gets looked at.
+  const hl = cfg.momentum.helius_leads; let heliusAdded = 0, heliusSeen = 0, heliusErr = null;
+  const state = deps.leadState ??= { cycle: 0 };
+  state.cycle++;
+  if (hl?.enabled && deps.helius?.enabled && (state.cycle - 1) % Number(hl.every_cycles) === 0) {
+    const found = new Map();
+    for (const prog of (deps.leadPrograms ?? Object.values(LEAD_PROGRAMS))) {
+      try { const r = await deps.helius.activeMints(prog, { limit: Number(hl.per_program_limit) }); for (const [mint, n] of r.mints) found.set(mint, (found.get(mint) ?? 0) + n); }
+      catch (e) { heliusErr = String(e.message).slice(0, 40); }
+    }
+    heliusSeen = found.size;
+    state.heliusLeads = [...found.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]).slice(0, Number(hl.max_leads));
+  }
+  const all = new Set(dexLeads);
+  for (const mt of state.heliusLeads ?? []) if (!all.has(mt)) { all.add(mt); heliusAdded++; }
+  const mints = [...all];
   if (!mints.length) return { leads: 0, scanned: 0, triggered: 0 };
   let pairs = [];
-  try { pairs = (await dex.tokensBatch(mints)).data ?? []; } catch { return { leads: mints.length, scanned: 0, error: 'pairs-fetch-failed' }; }
+  try { for (let i = 0; i < mints.length; i += 30) pairs.push(...((await dex.tokensBatch(mints.slice(i, i + 30))).data ?? [])); } catch { return { leads: mints.length, scanned: 0, error: 'pairs-fetch-failed' }; }
   // best (highest-liquidity) solana pair per base token
   const best = new Map();
   for (const p of pairs) if (p.chainId === 'solana' && p.baseToken?.address) {
@@ -107,7 +124,7 @@ export async function momentumCycle(db, deps) {
     const r = await processMomentum(db, deps, p);
     if (r.decision === 'PAPER_OPEN') opened++;
   }
-  return { leads: mints.length, scanned: best.size, triggered, opened };
+  return { leads: mints.length, leads_dex: dexLeads.size, leads_helius_new: heliusAdded, helius_seen: heliusSeen, helius_credits: deps.helius?.credits ?? 0, helius_error: heliusErr, scanned: best.size, triggered, opened };
 }
 
 // Weekly-style latency proof from stored fields (NULL rows excluded and counted).
