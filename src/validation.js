@@ -14,9 +14,9 @@ export function decodeMint(account) {
   const decimals = data.readUInt8(44);
   const freeze = data.readUInt32LE(46) === 1 ? data.subarray(50, 82).toString('base64') : null;
   let extensions = [];
-  if (data.length > 82) { // Token-2022 TLV area present (accountType byte at 82, then entries)
-    if (data.readUInt8(82) !== 1) return { ok: false, error: 'token-2022-account-not-mint' };
-    for (let off = 83; off + 4 <= data.length;) {
+  if (data.length > 82) { // Token-2022: base mint is padded to 165 bytes, accountType byte at 165 (1 = mint), TLV entries from 166
+    if (data.length <= 165 || data.readUInt8(165) !== 1) return { ok: false, error: 'token-2022-account-not-mint' };
+    for (let off = 166; off + 4 <= data.length;) {
       const type = data.readUInt16LE(off); const len = data.readUInt16LE(off + 2);
       extensions.push({ type, len }); off += 4 + len;
     }
