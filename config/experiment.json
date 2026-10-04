@@ -19,8 +19,6 @@
   "exit_policy": { "stop_loss_net": "0.50", "max_hold_hours": 24 },
   "take_profit_multiple": "1.5",
   "rug_writeoff_unpriceable_cycles": 720,
-  "market_source": "birdeye",
-  "birdeye": { "per_cycle": 15, "per_min": 20 },
   "poll_seconds": 120,
   "mark_seconds": 120,
   "discovery_cadence_minutes": 15,
