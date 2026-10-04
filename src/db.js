@@ -120,6 +120,19 @@ CREATE INDEX IF NOT EXISTS idx_outbox_state ON telegram_outbox(state, next_attem
 CREATE UNIQUE INDEX IF NOT EXISTS idx_open_mint ON paper_positions(experiment_id, mint) WHERE state='OPEN';
 `;
 
+// Non-destructive, idempotent column additions (existing DBs keep all rows).
+function addColumn(db, table, col, ddl) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+}
+export function migrate(db) {
+  addColumn(db, 'paper_positions', 'origin', `TEXT DEFAULT 'whale'`);
+  addColumn(db, 'buy_events', 'origin', `TEXT DEFAULT 'whale'`);
+  addColumn(db, 'buy_events', 'candle_start_ms', 'INTEGER NULL');
+  addColumn(db, 'buy_events', 'detection_ms', 'INTEGER NULL');
+  addColumn(db, 'buy_events', 'entry_ms', 'INTEGER NULL');
+  addColumn(db, 'buy_events', 'candle_time_source', 'TEXT NULL');
+}
+
 let writer = Promise.resolve();
 export function openDb(file = 'var/sewl.sqlite') {
   if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true });
@@ -128,6 +141,7 @@ export function openDb(file = 'var/sewl.sqlite') {
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 // Single-writer: serialize all mutating work behind one promise chain and use
