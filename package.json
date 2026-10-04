@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "description": "SEWL - evidence-first Solana early-wallet paper trading research pilot (paper money only, no real funds)",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "init": "node scripts/init-db.js",
     "start": "node src/main.js",
