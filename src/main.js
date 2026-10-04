@@ -45,6 +45,7 @@ const sampledPools = new Set();
 async function discoverCycle() {
   const q = db.prepare(`SELECT COUNT(*) c FROM wallets WHERE status='QUALIFIED'`).get().c;
   if (q >= cfg.discovery.max_qualified_wallets) return { skipped: 'enough-qualified' };
+  if (db.prepare(`SELECT COUNT(*) c FROM wallets WHERE status IN ('HISTORY_PENDING','DISCOVERED')`).get().c >= cfg.discovery.max_history_backlog) return { skipped: 'history-backlog-full' };
   // Promotional leads only; retained failures and flat tokens matter (survivorship control).
   const leads = new Set();
   for (const fn of ['latestBoosts', 'latestProfiles']) {
@@ -90,7 +91,7 @@ async function discoverCycle() {
 }
 
 async function historyCycle() {
-  const pending = db.prepare(`SELECT address FROM wallets WHERE status IN ('HISTORY_PENDING','DISCOVERED') LIMIT 3`).all();
+  const pending = db.prepare(`SELECT address FROM wallets WHERE status IN ('HISTORY_PENDING','DISCOVERED') ORDER BY discovered_at LIMIT ${cfg.discovery.history_wallets_per_cycle}`).all();
   for (const { address } of pending) {
     try {
       await reconstructHistory(db, rpc, coingecko, address, { txCap: cfg.discovery.wallet_history_tx_cap });
@@ -168,7 +169,7 @@ const snapSecrets = [process.env.HELIUS_API_KEY, process.env.TELEGRAM_BOT_TOKEN,
 async function snapTick() { try { const r = await writeSnapshots({ db, cfg, state: deps.leadState ?? {}, chain: appChain, gecko: appGecko, helius, secrets: snapSecrets, dir: 'site/snap' }); health('snapshot', r.rejected.length ? 'WARN' : 'INFO', 'snapshot-written', { files: r.written.length, rejected: r.rejected.length, credits: r.credits }); } catch (e) { health('snapshot', 'ERROR', 'snapshot-failed', { error: String(e.message ?? e).slice(0, 200) }); } }
 setTimeout(() => snapTick(), 90 * 1000).unref(); setInterval(() => snapTick(), 10 * 60 * 1000).unref();
 loop('discovery', cfg.discovery_cadence_minutes * 60, discoverCycle);
-loop('history', 300, historyCycle);
+loop('history', cfg.discovery.history_cadence_seconds ?? 1800, historyCycle);
 loop('watch', cfg.poll_seconds, watchCycle);
 loop('mark', cfg.mark_seconds, markCycle);
 loop('outbox', cfg.outbox_flush_seconds, () => outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID));
