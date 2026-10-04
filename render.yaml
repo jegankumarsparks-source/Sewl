@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: sewl
+    runtime: node
+    plan: free
+    buildCommand: npm install --no-audit --no-fund
+    startCommand: bash scripts/render-start.sh
+    healthCheckPath: /
+    envVars:
+      - key: EXIT_POLICY_APPROVED
+        value: "true"
+      - key: GITHUB_STATE_TOKEN
+        value: "PAT_PLACEHOLDER"
+      - key: GITHUB_STATE_REPO
+        value: "jegankumarsparks-source/Sewl"
