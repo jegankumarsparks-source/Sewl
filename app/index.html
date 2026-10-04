@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#070b14">
+<meta name="theme-color" content="#000000">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon.svg">
@@ -11,10 +11,11 @@
 <title>SEWL (PAPER)</title>
 </head>
 <body>
-<div class="bg-orb o1"></div><div class="bg-orb o2"></div>
+<div class="topbar"><span class="brandm">SE<b>WL</b></span><span class="pb">PAPER ONLY</span><span class="hb" id="hb" title="Heartbeat: app is polling live data"></span></div><div class="ptr" aria-hidden="true"><span>scanning...</span></div>
 <aside class="side" id="side"></aside>
 <main id="view" class="view" aria-live="polite"></main>
 <nav class="tabs" id="tabs"></nav>
+<script src="/coin.js" defer></script>
 <script src="/app.js" defer></script>
 </body>
 </html>

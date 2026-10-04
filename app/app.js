@@ -16,16 +16,15 @@ const ico = {
   rep: '<path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/>',
   mor: '<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
 };
-const ROUTES = [['', 'Home', 'home'], ['signals', 'Signals', 'sig'], ['momentum', 'Radar', 'rad'], ['wallets', 'Wallets', 'wal'], ['evidence', 'Evidence', 'evi'], ['health', 'Health', 'hea'], ['reports', 'Reports', 'rep']];
-const TAB = ['', 'signals', 'momentum', 'reports'];
+const ROUTES = [['', 'Dashboard', 'home'], ['signals', 'Signals', 'sig'], ['wallets', 'Wallets', 'wal'], ['activity', 'Activity', 'evi'], ['health', 'Health', 'hea']];
+const TAB = ['', 'signals', 'wallets', 'activity', 'health'];
 const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ico[k]}</svg>`;
 
+const PARENT = { coin: 'signals', wallet: 'wallets', momentum: 'activity', evidence: 'activity', reports: 'activity' };
 function nav(cur) {
-  $('#side').innerHTML = '<div class="brand">SE<b>WL</b> <span class="badge mute">PAPER</span></div>' + ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${cur === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
-  const inMore = !TAB.includes(cur);
-  $('#tabs').innerHTML = ROUTES.filter(([p]) => TAB.includes(p)).map(([p, l, i]) => `<a href="#/${p}" class="${cur === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('') + `<a href="#" id="moreBtn" class="${inMore ? 'on' : ''}">${svg('mor')}More</a>`
-    + `<div class="more card" id="more">${ROUTES.filter(([p]) => !TAB.includes(p)).map(([p, l, i]) => `<a href="#/${p}" class="${cur === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('')}</div>`;
-  $('#moreBtn').onclick = (e) => { e.preventDefault(); $('#more').classList.toggle('open'); };
+  const on = PARENT[cur] ?? cur;
+  $('#side').innerHTML = '<div class="brand">SE<b>WL</b> <span class="badge mute">PAPER</span></div>' + ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${on === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
+  $('#tabs').innerHTML = ROUTES.map(([p, l, i]) => `<a href="#/${p}" class="${on === p ? 'on' : ''}">${svg(i)}${l}</a>`).join('');
 }
 async function get(p) { const r = await fetch('/api/' + p, { cache: 'no-store' }); if (!r.ok) throw new Error(p + ' ' + r.status); return r.json(); }
 const badge = (t, k = '') => `<span class="badge ${k}">${esc(t)}</span>`;
@@ -69,7 +68,7 @@ const V = {
     <div class="card"><h2>Recently closed</h2>${d.recent_closed.map((p) => `<div class="row"><span class="mono">${esc(short(p.mint))}</span><span class="sub">${ago(p.closed_at)}</span></div>`).join('') || '<div class="empty">None yet.</div>'}</div>`;
     requestAnimationFrame(() => document.querySelectorAll('.ring .p').forEach((c) => { c.style.strokeDashoffset = c.dataset.to; }));
   },
-  async signals() {
+  async signalsList() {
     const d = await get('signals');
     $('#view').innerHTML = head('Signals', 'Whale and momentum decisions, newest first') + banner + (d.signals.map((s) => {
       const lat = s.origin === 'momentum' ? `<div class="sub">latency (upper bound): detect ${ms(s.detection_ms != null && s.candle_start_ms != null ? s.detection_ms - s.candle_start_ms : null)} | entry ${ms(s.entry_ms != null && s.detection_ms != null ? s.entry_ms - s.detection_ms : null)} | ${esc(s.candle_time_source ?? 'n/a')}</div>` : '';
@@ -92,7 +91,7 @@ const V = {
     <div class="card"><h2>Trigger history</h2>${d.history.map((h) => `<div class="row"><span class="mono">${esc(short(h.mint))}</span><span>${badge(h.decision, decisionKind(h.decision))}</span><span class="sub">${ago(h.qualified_at)}</span></div>`).join('') || '<div class="empty">No triggers yet.</div>'}</div>
     <div class="card"><h2>Coverage note</h2><div class="sub">${esc(d.coverage_note)}</div></div>`;
   },
-  async wallets() {
+  async walletsList() {
     const d = await get('wallets'), g = d.gates;
     $('#view').innerHTML = head('Wallets', 'Quality leaderboard') + banner + `<div class="card"><h2>Gates</h2><div class="sub">score &ge; ${esc(g.score_min)} | Wilson &ge; ${esc(g.wilson_min)} | profit factor &ge; ${esc(g.pf_min)} | &ge; ${esc(g.min_round_trips)} round trips | &ge; ${esc(g.min_mints)} mints | parse coverage &ge; ${esc(g.parse_coverage)} | priced coverage &ge; ${esc(g.priced_coverage)}</div></div>`
       + (d.wallets.map((w) => `<div class="card"><div class="row" style="padding:0;border:0"><span class="mono">${esc(short(w.address))}</span>${badge(w.status, w.status === 'QUALIFIED' ? 'ok' : 'mute')}</div>
@@ -115,6 +114,20 @@ const V = {
     <div class="card"><h2>Stall heartbeat</h2><div class="sub">${esc(d.stall_note)}</div>${d.stalls.map((s) => `<div class="row"><span class="mono">${esc(s.component)}</span><span class="sub">age ${esc(s.detail?.last_done_age_s ?? '?')}s of ${esc(s.detail?.interval_s ?? '?')}s interval | ${ago(s.at)}</span></div>`).join('')}</div>
     <div class="card"><h2>API key quota</h2><div class="sub">${esc(d.key_quota.note)}</div></div>`;
   },
+  async signals() {
+    const mk = await CV.markets(); await V.signalsList(); const cur = $('#view').innerHTML; const i = cur.indexOf('</div>', cur.indexOf('class="banner"')) + 6;
+    $('#view').innerHTML = cur.slice(0, i) + `<div class="card"><h2>Markets</h2><div class="sub">Tap a coin for details. Long-press for a quick preview.</div>${mk}</div><h2 style="margin:16px 4px 8px">Decisions</h2>` + cur.slice(i);
+  },
+  async wallets() {
+    await V.walletsList(); const cur = $('#view').innerHTML; const i = cur.indexOf('</div>', cur.indexOf('class="banner"')) + 6;
+    $('#view').innerHTML = cur.slice(0, i) + `<form class="card" id="wf"><input id="wi" class="inp" placeholder="Paste any Solana wallet address" autocomplete="off" autocapitalize="off" spellcheck="false"><button class="btn" type="submit">Open wallet</button><div class="sub">Real on-chain data. Each lookup spends Helius credits from the capped monthly budget; results are cached.</div></form>` + cur.slice(i);
+    $('#wf').onsubmit = (e) => { e.preventDefault(); const v = $('#wi').value.trim(); if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) location.hash = '#/wallet/' + v; else $('#wi').classList.add('bad'); };
+  },
+  async activity() {
+    $('#view').innerHTML = head('Activity', 'Evidence, reports and the scan loop') + banner + `<div class="card"><a class="row" href="#/reports" style="text-decoration:none;color:inherit"><span>Reports</span><span>&rsaquo;</span></a><a class="row" href="#/evidence" style="text-decoration:none;color:inherit"><span>Evidence log</span><span>&rsaquo;</span></a><a class="row" href="#/momentum" style="text-decoration:none;color:inherit"><span>Momentum scan stats</span><span>&rsaquo;</span></a></div>`;
+  },
+  async coin(mint) { const html = await CV.coin(mint); $('#view').innerHTML = html; drawCoin(mint, await get('coin/' + mint)); clearInterval(coinTimer); coinTimer = setInterval(async () => { try { const d = await get('coin/' + mint); const el = $('#px'); if (!el) return clearInterval(coinTimer); const old = el.textContent; el.textContent = price(d.market?.price_usd); if (el.textContent !== old) { el.classList.remove('up', 'dn'); void el.offsetWidth; el.classList.add(Number(d.market?.price_usd) >= 0 ? 'up' : 'dn'); } } catch (_) {} }, 15000); },
+  async wallet(addr) { $('#view').innerHTML = await CV.wallet(addr); },
   async reports(id) {
     if (id) {
       const r = await get('reports/' + id);
@@ -153,10 +166,10 @@ function md(src) {
 let timer;
 async function render() {
   const h = location.hash.replace(/^#\/?/, ''); const [r, id] = h.split('/'); const route = V[r ?? ''] ? (r ?? '') : '';
-  nav(route); const more = $('#more'); if (more) more.classList.remove('open');
+  nav(route);
   $('#view').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
-  try { await V[route](id ? Number(id) : undefined); } catch (e) { $('#view').innerHTML = `<div class="card"><h2>Could not load</h2><div class="sub">${esc(e.message)}</div></div>`; }
-  clearInterval(timer); if (route !== 'reports' || !id) timer = setInterval(() => V[route](id ? Number(id) : undefined).catch(() => {}), 30000);
+  try { await V[route](id ? (route === 'reports' ? Number(id) : id) : undefined); } catch (e) { $('#view').innerHTML = `<div class="card"><h2>Could not load</h2><div class="sub">${esc(e.message)}</div></div>`; }
+  clearInterval(timer); clearInterval(coinTimer); if (!['coin', 'wallet'].includes(route) && (route !== 'reports' || !id)) timer = setInterval(() => V[route](id ? Number(id) : undefined).catch(() => {}), 30000);
 }
 addEventListener('hashchange', render); render();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
