@@ -26,3 +26,13 @@ export const fmt = (a) => {
 export const floorRaw = (raw, decimals) => { const r = BigInt(raw); const m = 10n ** BigInt(decimals); return r - (r % m); };
 export const rawToUsdText = (raw, decimals, priceUsd) =>
   fmt(mul(div(d(raw), d(10).pow(d(decimals))), d(priceUsd)));
+// Raw token units worth `usd` at a price quoted with ANY number of decimals (DexScreener quotes pump coins at 7+ dp).
+// Exact BigInt math, floored. Exponent notation or non-positive prices throw, so callers stay fail-closed.
+export function usdToRawUnits(usd, priceText, decimals) {
+  const m = /^(\d+)(?:\.(\d{1,30}))?$/.exec(String(priceText).trim());
+  if (!m) throw new Error('bad price: ' + priceText);
+  const frac = m[2] ?? '';
+  const P = BigInt(m[1] + frac);
+  if (P <= 0n) throw new Error('non-positive price');
+  return (d(usd) * 10n ** BigInt(decimals + frac.length)) / (P * S);
+}

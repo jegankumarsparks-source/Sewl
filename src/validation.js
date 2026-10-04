@@ -1,4 +1,4 @@
-import { d, div, mul, fmt, cmp } from './decimal.js';
+import { d, div, mul, fmt, cmp, usdToRawUnits } from './decimal.js';
 import { uuid, nowIso } from './db.js';
 import { SOL, USDC } from './sources/jupiter.js';
 
@@ -106,8 +106,7 @@ export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
   if (result === 'QUALIFIED' || result === 'DATA_INCOMPLETE') {
     try {
       if (!(price != null && Number(price) > 0)) throw new Error('no-price-for-probe');
-      const tokens = div(d(cfg.position_budget_usd), d(String(price)));
-      const units = BigInt(fmt(mul(tokens, d(String(10n ** BigInt(dec.decimals))))).split('.')[0]);
+      const units = usdToRawUnits(cfg.position_budget_usd, String(price), dec.decimals);
       if (units <= 0n) throw new Error('zero-probe-units');
       const q = await jupiter.sellQuote(mint, units.toString());
       evidenceIds.push(q.evidenceId);

@@ -58,7 +58,7 @@ export async function processMomentum(db, deps, pair, { nowMs = Date.now() } = {
     db.prepare(`INSERT INTO signals (id, experiment_id, mint, qualified_at, buy_event_ids_json, rule_version, decision, reason_codes_json, dedupe_key, risk_assessment_id)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run(signalId, 'exp-1', mint, nowIso(), JSON.stringify([buyId]), 'momentum-v1', decision, JSON.stringify(rs), `mom:${mint}:${buyId}`, extra.riskId ?? null);
     db.prepare(`UPDATE buy_events SET eligibility_state=? WHERE id=?`).run(decision, buyId);
-    outbox?.enqueue('signal', { mint, decision, reasons: rs, venue: 'MOMENTUM', notional: null, risk: extra.risk ?? null });
+    outbox?.enqueue('signal', { mint, decision, reasons: rs, venue: 'MOMENTUM', notional: decision === 'PAPER_OPEN' ? String(cfg.position_budget_usd) : null, risk: extra.risk ?? null, name: pair?.baseToken?.name ?? null, symbol: pair?.baseToken?.symbol ?? null, entry_at: nowIso() });
     return { decision, reasons: rs, signalId, buyId, metrics: ev.metrics };
   };
   let risk;

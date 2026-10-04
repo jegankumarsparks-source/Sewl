@@ -81,3 +81,13 @@ test('C: no observed price in the window -> DATA_INCOMPLETE observed-price-unkno
 test('C: zero observed price -> DATA_INCOMPLETE, no divide by zero', () => { const g = pumpWindowGate(snaps([[30, '0.01'], [1, '0']]), 'MINT', d('0.05'), cfg); assert.equal(g.decision, 'DATA_INCOMPLETE'); });
 test('C: observed price and 2x breach -> REJECTED', () => { const g = pumpWindowGate(snaps([[30, '0.01'], [5, '0.01']]), 'MINT', d('0.025'), cfg); assert.equal(g.decision, 'REJECTED'); assert.deepEqual(g.reasons, ['pump-above-2x-in-window']); });
 test('C: clean window -> proceeds (null)', () => { assert.equal(pumpWindowGate(snaps([[30, '0.01'], [5, '0.01']]), 'MINT', d('0.012'), cfg), null); });
+test('7-decimal pump price no longer breaks the $20 sell probe (regression: sell-quote-unavailable on 0.0004245)', async () => {
+  const seen = []; const r = await run({ dex: pairRes({ priceUsd: '0.0004245' }), sell: async (m, u) => { seen.push(u); return okQuote(); } });
+  assert.equal(r.checks.sellability, 'PASS'); assert.equal(r.result, 'QUALIFIED'); assert.ok(seen.length >= 1);
+});
+test('probe still fails closed on unusable price (exponent / zero / missing) -> DATA_INCOMPLETE', async () => {
+  for (const p of ['1e-7', '0', undefined]) { const r = await run({ dex: pairRes({ priceUsd: p }) }); assert.equal(r.checks.sellability, 'UNKNOWN', String(p)); assert.equal(r.result, 'DATA_INCOMPLETE'); }
+});
+test('usdToRawUnits exact: $20 at 0.0004245 with 6dp = 47114252061 raw', async () => {
+  const { usdToRawUnits } = await import('../src/decimal.js'); assert.equal(usdToRawUnits('20', '0.0004245', 6), 47114252061n); assert.equal(usdToRawUnits('20', '0.5', 0), 40n);
+});
