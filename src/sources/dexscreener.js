@@ -20,7 +20,7 @@ export class Dexscreener {
     }
     const evidenceId = recordObservation(this.db, { provider: BASE, method: 'GET ' + path, requestedAt, body: j, httpStatus: res.status, status: res.ok ? 'OK' : 'ERROR' });
     if (!res.ok) throw new Error('dexscreener ' + res.status);
-    return { data: j, evidenceId };
+    return { data: j, evidenceId, receivedAt: new Date().toISOString() };
   }
   tokenPairs(mints) { return this.get(`/token-pairs/v1/solana/${Array.isArray(mints) ? mints.slice(0, 30).join(',') : mints}`); }
   // batch: up to 30 token addresses in one call (the token-pairs endpoint takes ONE token)

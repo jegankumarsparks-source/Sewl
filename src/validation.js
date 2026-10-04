@@ -85,25 +85,41 @@ export async function validateToken(db, rpc, dex, jupiter, mint, cfg) {
     } else { checks.owner_classification = 'UNKNOWN'; unknown.push('owner-resolve-failed'); result = 'DATA_INCOMPLETE'; }
   } else { checks.owner_classification = 'UNKNOWN'; unknown.push('largest-accounts-unavailable'); result = 'DATA_INCOMPLETE'; }
 
-  // Market data + sellability quote
+  // Market data (Solana pair only, no silent fallback) + freshness derived from the evidence receipt time
+  const ageS = (iso) => { const t = Date.parse(iso ?? ''); return Number.isFinite(t) ? (Date.now() - t) / 1000 : null; };
   const pairs = await dex.tokenPairs(mint).catch(() => null);
   let liq = null, price = null;
-  if (pairs?.data?.length) {
+  const p = pairs?.data?.length ? pairs.data.find(x => x.chainId === 'solana') : null;
+  if (p) {
     evidenceIds.push(pairs.evidenceId);
-    const p = pairs.data.find(x => x.chainId === 'solana') || pairs.data[0];
     liq = p.liquidity?.usd ?? null; price = p.priceUsd ?? null;
-    checks.market_fresh = 'PASS'; // freshness tracked via received_at in evidence
+    const mAge = ageS(pairs.receivedAt);
+    if (mAge != null && mAge <= Number(cfg.validation.market_fresh_seconds)) checks.market_fresh = 'PASS';
+    else { checks.market_fresh = 'UNKNOWN'; unknown.push('market-stale'); if (result === 'QUALIFIED') result = 'DATA_INCOMPLETE'; }
     checks.liquidity = liq != null && Number(liq) >= Number(cfg.validation.min_liquidity_usd) ? 'PASS' : (liq == null ? 'UNKNOWN' : 'FAIL');
     if (checks.liquidity === 'UNKNOWN') { unknown.push('liquidity-missing'); result = 'DATA_INCOMPLETE'; }
-  } else { checks.liquidity = 'UNKNOWN'; checks.market_fresh = 'UNKNOWN'; unknown.push('market-data-missing'); result = 'DATA_INCOMPLETE'; }
+  } else if (pairs?.data?.length) { checks.liquidity = 'UNKNOWN'; checks.market_fresh = 'UNKNOWN'; unknown.push('solana-pair-missing'); result = 'DATA_INCOMPLETE'; }
+  else { checks.liquidity = 'UNKNOWN'; checks.market_fresh = 'UNKNOWN'; unknown.push('market-data-missing'); result = 'DATA_INCOMPLETE'; }
 
+  // Sellability: price impact on a POSITION-SIZED sell quote is the gate (real exit is ~$20-30).
+  // A full-supply route probe is secondary INFO only and never decides the result.
   if (result === 'QUALIFIED' || result === 'DATA_INCOMPLETE') {
-    const units = dec.supply; // full-supply probe sellability (conservative read-only quote)
     try {
-      const q = await jupiter.sellQuote(mint, units);
+      if (!(price != null && Number(price) > 0)) throw new Error('no-price-for-probe');
+      const tokens = div(d(cfg.position_budget_usd), d(String(price)));
+      const units = BigInt(fmt(mul(tokens, d(String(10n ** BigInt(dec.decimals))))).split('.')[0]);
+      if (units <= 0n) throw new Error('zero-probe-units');
+      const q = await jupiter.sellQuote(mint, units.toString());
       evidenceIds.push(q.evidenceId);
-      checks.sellability = 'PASS';
+      const qAge = ageS(q.receivedAt);
+      const impact = Math.abs(Number(q.quote?.priceImpactPct));
+      checks.sell_impact_probe_usd = String(cfg.position_budget_usd);
+      if (qAge == null || qAge > Number(cfg.validation.quote_fresh_seconds)) { checks.sellability = 'UNKNOWN'; unknown.push('quote-stale'); if (result === 'QUALIFIED') result = 'DATA_INCOMPLETE'; }
+      else if (!Number.isFinite(impact)) { checks.sellability = 'UNKNOWN'; unknown.push('price-impact-missing'); if (result === 'QUALIFIED') result = 'DATA_INCOMPLETE'; }
+      else { checks.sell_impact = String(impact); checks.sellability = impact <= Number(cfg.validation.max_impact) ? 'PASS' : 'FAIL'; }
     } catch { checks.sellability = 'UNKNOWN'; unknown.push('sell-quote-unavailable'); if (result === 'QUALIFIED') result = 'DATA_INCOMPLETE'; }
+    try { const f = await jupiter.sellQuote(mint, dec.supply); evidenceIds.push(f.evidenceId); checks.full_supply_route_info = 'ROUTE_OK'; }
+    catch { checks.full_supply_route_info = 'ROUTE_UNAVAILABLE'; } // informational only: not evidence of unsellability at our size
   }
   // Any definitive FAIL (authority, extension, concentration, liquidity, sellability) rejects the token; direct check assignments above do not set result themselves.
   if (Object.values(checks).includes('FAIL')) result = 'REJECTED';

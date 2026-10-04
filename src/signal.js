@@ -5,6 +5,18 @@ import { paperEntry } from './paper.js';
 import { USDC } from './sources/jupiter.js';
 
 // Full gate chain for a provisional buy event -> signal -> optional paper entry.
+// Pre-entry observation window gate. Returns null to proceed, or { decision, reasons }.
+// Unknown observed price is DATA_INCOMPLETE (never a silent skip); a >=2x run above the window low is REJECTED.
+export function pumpWindowGate(db, mint, curUnitUsd, cfg, nowMs = Date.now()) {
+  const winMs = Number(cfg.signal.min_watch_minutes) * 60_000;
+  const hasObsWindow = db.prepare(`SELECT COUNT(*) c FROM market_snapshots WHERE mint=? AND observed_at<=?`).get(mint, new Date(nowMs - winMs).toISOString()).c > 0;
+  if (!hasObsWindow) return { decision: 'WATCH_ONLY', reasons: ['observation-window-too-short'] };
+  const lo = db.prepare(`SELECT MIN(CAST(price_usd AS REAL)) lo FROM market_snapshots WHERE mint=? AND observed_at>=? AND price_usd IS NOT NULL AND CAST(price_usd AS REAL) > 0`).get(mint, new Date(nowMs - winMs).toISOString()).lo;
+  if (lo == null || !(lo > 0)) return { decision: 'DATA_INCOMPLETE', reasons: ['observed-price-unknown'] };
+  if (cmp(div(curUnitUsd, d(String(lo))), d(cfg.signal.max_observed_multiple)) >= 0) return { decision: 'REJECTED', reasons: ['pump-above-2x-in-window'] };
+  return null;
+}
+
 export async function processBuy(db, deps, buy) {
   const { cfg, dex, jupiter, rpc, outbox } = deps;
   const reasons = [];
@@ -19,7 +31,8 @@ export async function processBuy(db, deps, buy) {
   const pairs = await dex.tokenPairs(buy.mint).catch(() => null);
   let pairCreatedMs = null;
   if (pairs?.data?.length) {
-    const p = pairs.data.find(x => x.chainId === 'solana') || pairs.data[0];
+    const p = pairs.data.find(x => x.chainId === 'solana');
+    if (!p) { reasons.push('solana-pair-missing'); return decide(db, deps, buy, 'DATA_INCOMPLETE', reasons); }
     pairCreatedMs = p.pairCreatedAtMs ?? null;
     db.prepare(`INSERT INTO market_snapshots (id, mint, pool_address, observed_at, price_usd, liquidity_usd, market_cap_usd, fdv_usd, evidence_id, freshness_state)
       VALUES (?,?,?,?,?,?,?,?,?, 'FRESH')`)
@@ -59,13 +72,8 @@ export async function processBuy(db, deps, buy) {
   if (!pass(cmp(div(curUnitUsd, whaleUnitUsd), d(cfg.signal.max_chase_multiple)) <= 0, 'chase-limit-exceeded')) return decide(db, deps, buy, 'REJECTED', reasons);
 
   // 6. 10-minute pre-entry observation window: current < 2x lowest credible observation
-  const obs = db.prepare(`SELECT MIN(CAST(price_usd AS REAL)) lo FROM market_snapshots WHERE mint=? AND observed_at>=?`).get(buy.mint, new Date(Date.now() - Number(cfg.signal.min_watch_minutes) * 60_000).toISOString());
-  const hasObsWindow = db.prepare(`SELECT COUNT(*) c FROM market_snapshots WHERE mint=? AND observed_at<=?`).get(buy.mint, new Date(Date.now() - Number(cfg.signal.min_watch_minutes) * 60_000).toISOString()).c > 0;
-  if (!pass(hasObsWindow, 'observation-window-too-short')) return decide(db, deps, buy, 'WATCH_ONLY', reasons);
-  if (obs.lo != null && cmp(div(curUnitUsd, d(String(obs.lo))), d(cfg.signal.max_observed_multiple)) >= 0) {
-    reasons.push('pump-above-2x-in-window');
-    return decide(db, deps, buy, 'REJECTED', reasons);
-  }
+  const pw = pumpWindowGate(db, buy.mint, curUnitUsd, cfg);
+  if (pw) { reasons.push(...pw.reasons); return decide(db, deps, buy, pw.decision, reasons); }
 
   // 7. paper entry via fresh read-only Jupiter quote ($49.75 effective, 1% haircut, round down)
   const budget = d(cfg.position_budget_usd);

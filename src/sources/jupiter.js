@@ -24,7 +24,7 @@ export class Jupiter {
     }
     const evidenceId = recordObservation(this.db, { provider: BASE, method: 'GET ' + path, subject: `${inputMint}->${outputMint}:${amountRaw}`, requestedAt, body: j, httpStatus: res.status, status: res.ok ? 'OK' : 'ERROR' });
     if (!res.ok) throw new Error('jupiter ' + res.status);
-    return { quote: j, evidenceId, requestedAt };
+    return { quote: j, evidenceId, requestedAt, receivedAt: new Date().toISOString() };
   }
   // Read-only buy quote (USDC -> mint). Quote-only: never builds/submits a transaction.
   buyQuote(mint, usdcRaw) { return this.quote({ inputMint: USDC, outputMint: mint, amountRaw: usdcRaw }); }
