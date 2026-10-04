@@ -45,6 +45,7 @@ const P2 = {
     ['tp', 'sl', 'sz'].forEach((i) => ($('#' + i).oninput = run)); run();
   },
   async evidenceVerify(id) {
+    if (typeof STATIC_MODE !== 'undefined' && STATIC_MODE) throw new Error('evidence payloads are not in the public snapshot');
     const r = await fetch('/api/evidence/' + encodeURIComponent(id), { cache: 'no-store' });
     if (!r.ok) throw new Error('evidence ' + r.status + (r.status === 403 ? ' (withheld: looks like a credential)' : ''));
     const d = await r.json(); const bytes = new TextEncoder().encode(d.payload); const dig = await crypto.subtle.digest('SHA-256', bytes); const hex = [...new Uint8Array(dig)].map((b) => b.toString(16).padStart(2, '0')).join('');
