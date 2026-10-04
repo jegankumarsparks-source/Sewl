@@ -151,6 +151,7 @@ if (mode === 'flush') { console.log(await outbox.flush(process.env.TELEGRAM_BOT_
 if (mode === 'once') { const { momentumCycle } = await import('./momentum.js'); console.log(await discoverCycle()); await momentumCycle(); await historyCycle(); await watchCycle(); await markCycle(); await digestCycle(); console.log(await outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID)); process.exit(0); }
 
 health('worker', 'INFO', 'startup', { version: JSON.parse(readFileSync('package.json', 'utf8')).version + '+momentum-v1', keyless, mode: process.argv[2] ?? 'run', pid: process.pid });
+setInterval(() => { try { import('node:child_process').then(cp => cp.default.execFile('node', ['scripts/state-sync.js'])); } catch {} }, 600000);
 console.log('SEWL worker starting. mode=run keyless=' + keyless);
 console.log('PAPER TRADING ONLY. $' + cfg.starting_cash_usd + ' -> target $' + cfg.target_equity_usd + ' (latch, not a promise).');
 let stopped = false;
