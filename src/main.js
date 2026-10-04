@@ -9,6 +9,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
 import { Rpc, Quota } from './rpc.js';
 import { Dexscreener } from './sources/dexscreener.js';
+import { Birdeye } from './sources/birdeye.js';
 import { Jupiter } from './sources/jupiter.js';
 import { CoinGecko } from './sources/coingecko.js';
 import { Outbox } from './telegram.js';
@@ -30,7 +31,9 @@ const keyless = !process.env.HELIUS_API_KEY;
 const endpoint = keyless ? 'https://api.mainnet.solana.com'
   : `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
 const rpc = new Rpc({ endpoint, quota: new Quota(keyless ? 30 : 50, 10_000), db });
-const dex = new Dexscreener({ db });
+const dex = cfg.market_source === 'birdeye'
+  ? new Birdeye({ db, perCycle: Number(cfg.birdeye?.per_cycle ?? 15) })
+  : new Dexscreener({ db });
 const jupiter = new Jupiter({ db });
 const coingecko = new CoinGecko({ db });
 const helius = new Helius({ db, monthlyCap: cfg.helius_monthly_credit_cap ?? null });
