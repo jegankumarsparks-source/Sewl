@@ -1,3 +1,4 @@
+import { firstSwapMs } from './sources/helius.js';
 import { d, mul, fmt, cmp, floorRaw } from './decimal.js';
 import { uuid, nowIso } from './db.js';
 import { validateToken } from './validation.js';
@@ -38,11 +39,21 @@ export async function processMomentum(db, deps, pair, { nowMs = Date.now() } = {
   const detectionMs = nowMs;
   // DEX Screener exposes no candle open time: candle start is the 5m WINDOW BOUND (detection - window), so
   // detection latency here is an UPPER BOUND, labelled as such.
-  const candleStartMs = detectionMs - Number(m.window_minutes) * 60_000;
+  let candleStartMs = detectionMs - Number(m.window_minutes) * 60_000;
+  let candleSource = 'DEXSCREENER_5M_WINDOW_BOUND'; let swapEvidenceId = null;
+  // Helius parsed swaps (config-gated, inert without a key): exact on-chain block time of the first swap inside the 5m window.
+  if (deps.helius?.enabled) {
+    try {
+      const winStartSec = Math.floor(candleStartMs / 1000);
+      const hs = await deps.helius.swapsSince(mint, winStartSec);
+      const first = firstSwapMs(hs.swaps, winStartSec);
+      if (first != null) { candleStartMs = first; candleSource = 'HELIUS_FIRST_SWAP_IN_WINDOW'; swapEvidenceId = hs.evidenceId; }
+    } catch { /* fall back to the labelled window bound */ }
+  }
   const buyId = uuid(); const signalId = uuid(); const reasons = [];
   db.prepare(`INSERT INTO buy_events (id, wallet_address, trade_id, mint, onchain_time, detected_at, latency_ms, eligibility_state, origin, candle_start_ms, detection_ms, candle_time_source)
-    VALUES (?,?,?,?,?,?,?,?, 'momentum', ?, ?, 'DEXSCREENER_5M_WINDOW_BOUND')`)
-    .run(buyId, null, null, mint, null, new Date(detectionMs).toISOString(), detectionMs - candleStartMs, 'TRIGGERED', candleStartMs, detectionMs);
+    VALUES (?,?,?,?,?,?,?,?, 'momentum', ?, ?, ?)`)
+    .run(buyId, null, null, mint, null, new Date(detectionMs).toISOString(), detectionMs - candleStartMs, 'TRIGGERED', candleStartMs, detectionMs, candleSource);
   const finish = (decision, rs, extra = {}) => {
     db.prepare(`INSERT INTO signals (id, experiment_id, mint, qualified_at, buy_event_ids_json, rule_version, decision, reason_codes_json, dedupe_key, risk_assessment_id)
       VALUES (?,?,?,?,?,?,?,?,?,?)`).run(signalId, 'exp-1', mint, nowIso(), JSON.stringify([buyId]), 'momentum-v1', decision, JSON.stringify(rs), `mom:${mint}:${buyId}`, extra.riskId ?? null);

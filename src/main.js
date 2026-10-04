@@ -1,5 +1,6 @@
 import { momentumCycle } from './momentum.js';
 import { startApp } from './app.js';
+import { Helius } from './sources/helius.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
 import { Rpc, Quota } from './rpc.js';
@@ -28,7 +29,8 @@ const rpc = new Rpc({ endpoint, quota: new Quota(keyless ? 30 : 50, 10_000), db 
 const dex = new Dexscreener({ db });
 const jupiter = new Jupiter({ db });
 const coingecko = new CoinGecko({ db });
-const deps = { cfg, rpc, dex, jupiter, coingecko, outbox };
+const helius = new Helius({ db });
+const deps = { cfg, rpc, dex, jupiter, coingecko, outbox, helius };
 
 function health(component, severity, code, detail) {
   db.prepare(`INSERT INTO health_events (id, component, at, severity, code, detail_json) VALUES (?,?,?,?,?,?)`)
