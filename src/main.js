@@ -3,6 +3,7 @@ import { startApp } from './app.js';
 import { Helius } from './sources/helius.js';
 import { Chain } from './chain.js';
 import { writeSnapshots } from './snapshot.js';
+import { pairCreatedMs as pairCreatedMsOf } from './pairs.js';
 import { GeckoTerminal } from './sources/geckoterminal.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
@@ -40,6 +41,7 @@ function health(component, severity, code, detail) {
     .run(uuid(), component, nowIso(), severity, code, JSON.stringify(detail).slice(0, 500));
 }
 
+const sampledPools = new Set();
 async function discoverCycle() {
   const q = db.prepare(`SELECT COUNT(*) c FROM wallets WHERE status='QUALIFIED'`).get().c;
   if (q >= cfg.discovery.max_qualified_wallets) return { skipped: 'enough-qualified' };
@@ -57,9 +59,10 @@ async function discoverCycle() {
     try { pairs = (await dex.tokenPairs(mint)).data; } catch { continue; }
     const p = (pairs ?? []).find(x => x.chainId === 'solana');
     if (!p?.pairAddress) continue;
-    const ageMin = p.pairCreatedAtMs ? (Date.now() - p.pairCreatedAtMs) / 60_000 : null;
+    const created = pairCreatedMsOf(p); const ageMin = created ? (Date.now() - created) / 60_000 : null;
+    if (sampledPools.has(p.pairAddress)) continue; // do not re-pay for a pool already sampled in its early window
     if (ageMin == null || ageMin > cfg.discovery.early_window_minutes) continue;
-    sampled++;
+    sampled++; sampledPools.add(p.pairAddress); if (sampledPools.size > 500) sampledPools.delete(sampledPools.values().next().value);
     try {
       const { result: sigs } = await rpc.getSignaturesForAddress(p.pairAddress, { limit: cfg.discovery.early_swap_sample });
       for (const s of (sigs ?? []).slice(0, cfg.discovery.early_swap_sample)) {
@@ -81,7 +84,9 @@ async function discoverCycle() {
     db.prepare(`INSERT INTO wallets (address, discovered_at, discovery_method, status) VALUES (?,?,'prospective-cohort', 'HISTORY_PENDING')`).run(addr, nowIso());
     newWallets++;
   }
-  return { leads: leads.size, sampledPools: sampled, newWallets };
+  const out = { leads: leads.size, sampledPools: sampled, candidates: candidates.size, newWallets };
+  health('discovery', 'INFO', 'discovery-cycle', out);
+  return out;
 }
 
 async function historyCycle() {
