@@ -16,7 +16,5 @@
     "flush": "node src/main.js flush",
     "test": "node --test tests/paper.test.js tests/timeout.test.js tests/momentum.test.js tests/app.test.js"
   },
-  "dependencies": {
-    "better-sqlite3": "^11.3.0"
-  }
+  "dependencies": {}
 }
