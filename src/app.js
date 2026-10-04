@@ -111,10 +111,12 @@ export function buildApi(db, cfg) {
       const st = one(`SELECT COUNT(*) n FROM health_events WHERE code='loop-stalled' AND at >= ?`, since).n;
       const pos = one(`SELECT COUNT(*) n FROM paper_positions WHERE entry_at >= ?`, since).n;
       const first = one(`SELECT MIN(at) t FROM health_events WHERE code='momentum-cycle'`).t;
-      const parts = [`Window: last 7 days (data exists since ${first ?? 'n/a'}).`, `The scanner ran ${cy.c} cycles, saw ${cy.l} leads and scanned ${cy.s}.`, `${cy.t} coin(s) met the surge trigger and ${cy.o} paper entr${cy.o === 1 ? 'y was' : 'ies were'} opened.`,
+      const startMs = Math.max(Date.now() - 7 * 86400_000, first ? Date.parse(first) : Date.now());
+      const expected = Math.floor((Date.now() - startMs) / 1000 / Number(cfg.momentum.cycle_seconds));
+      const parts = [`Momentum cycles completed this week: ${cy.c} vs ${expected} expected if always-on (${expected > 0 ? Math.round(100 * cy.c / expected) : 'n/a'}% coverage, measured from the first recorded cycle; gaps are host sleep or stops).`, `Window: last 7 days (data exists since ${first ?? 'n/a'}).`, `The scanner ran ${cy.c} cycles, saw ${cy.l} leads and scanned ${cy.s}.`, `${cy.t} coin(s) met the surge trigger and ${cy.o} paper entr${cy.o === 1 ? 'y was' : 'ies were'} opened.`,
         sg.length ? 'Signal decisions: ' + sg.map(x => `${x.n} ${x.decision}`).join(', ') + '.' : 'No signals were recorded.', `${pos} paper position(s) opened. ${st} loop-stall warning(s), usually the host sleeping rather than a hang.`,
         'This is a count of what happened, not a performance claim. Zero entries is a legitimate outcome.'];
-      return { text: parts.join(' '), facts: { cycles: cy.c, leads: cy.l, scanned: cy.s, triggered: cy.t, opened: cy.o, signals: sg, stalls: st, positions: pos }, generated_at: new Date().toISOString(), note: 'Template text built only from stored rows; no model-written claims.' };
+      return { text: parts.join(' '), facts: { cycles_expected: expected, cycles: cy.c, leads: cy.l, scanned: cy.s, triggered: cy.t, opened: cy.o, signals: sg, stalls: st, positions: pos }, generated_at: new Date().toISOString(), note: 'Template text built only from stored rows; no model-written claims.' };
     },
     lab() {
       const marks = q(`SELECT position_id, marked_at, net_multiple FROM position_marks WHERE valuation_state='PRICED' AND net_multiple IS NOT NULL ORDER BY position_id, marked_at LIMIT 5000`);

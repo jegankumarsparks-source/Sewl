@@ -26,7 +26,7 @@ test('P2 API: pnl, journal, weekly, lab, health cockpit come from stored rows on
   const { file } = seed(); const srv = startApp(cfg, { file }); const base = `http://127.0.0.1:${await listen(srv)}`;
   try {
     const j = async (p) => (await fetch(`${base}/api/${p}`)).json();
-    const w = await j('weekly'); assert.equal(w.facts.cycles, 3); assert.equal(w.facts.leads, 30); assert.equal(w.facts.triggered, 3); assert.equal(w.facts.stalls, 1); assert.match(w.text, /3 cycles/); assert.match(w.text, /not a performance claim/);
+    const w = await j('weekly'); assert.equal(w.facts.cycles, 3); assert.equal(w.facts.leads, 30); assert.equal(w.facts.triggered, 3); assert.equal(w.facts.stalls, 1); assert.match(w.text, /3 cycles/); assert.match(w.text, /cycles completed this week: 3 vs \d+ expected if always-on/); assert.ok(w.facts.cycles_expected >= 0); assert.match(w.text, /not a performance claim/);
     const l = await j('lab'); assert.equal(l.positions[0].series.length, 3); assert.deepEqual(l.positions[0].series.map(s => s.x), [1.0, 1.2, 1.6]);
     const p = await j('pnl'); assert.equal(p.milestones[0].multiple, 1); assert.equal(p.closed_total, 0); assert.deepEqual(p.equity_series, []);
     const jr = await j('journal'); assert.ok(jr.entries.some(e => e.kind === 'entry') && jr.entries.some(e => e.title.startsWith('loop-stalled')));
