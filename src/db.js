@@ -147,12 +147,23 @@ export function migrate(db) {
 let writer = Promise.resolve();
 export function openDb(file = 'var/sewl.sqlite') {
   if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true });
-  const db = new Database(file);
+  const db = new DatabaseSync(file);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
   db.exec(SCHEMA);
   migrate(db);
+    // node:sqlite compat for better-sqlite3 call sites
+  db.pragma = (p) => db.exec('PRAGMA ' + String(p).replace(/[=;]/g, ' '));
+  const _prep = db.prepare.bind(db);
+  db.prepare = (sql) => {
+    const st = _prep(sql);
+    const run = st.run.bind(st), get = st.get.bind(st), all = st.all.bind(st);
+    st.run = (...a) => run(...a.map(v => (v === undefined ? null : v)));
+    st.get = (...a) => get(...a.map(v => (v === undefined ? null : v)));
+    st.all = (...a) => all(...a.map(v => (v === undefined ? null : v)));
+    return st;
+  };
   return db;
 }
 // Single-writer: serialize all mutating work behind one promise chain and use
