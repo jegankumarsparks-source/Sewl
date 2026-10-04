@@ -7,6 +7,8 @@ services:
     startCommand: bash scripts/render-start.sh
     healthCheckPath: /
     envVars:
+      - key: NODE_OPTIONS
+        value: "--experimental-sqlite"
       - key: NODE_VERSION
         value: "22.12.0"
       - key: SEWL_APP_PORT
