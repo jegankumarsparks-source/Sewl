@@ -34,7 +34,8 @@ test('app: static whitelist blocks traversal and secrets; responses carry no sec
   const { file } = seed(); const srv = startApp(cfg, { file }); const port = await listen(srv); const base = `http://127.0.0.1:${port}`;
   try {
     for (const p of ['/.env', '/../.env', '/..%2f.env', '/var/sewl.sqlite', '/config/experiment.json', '/src/main.js', '/package.json']) assert.equal((await fetch(base + p)).status, 404, p);
-    assert.equal((await fetch(base + '/')).status, 200);
+    const home = await fetch(base + '/'); assert.equal(home.status, 200); assert.match(await home.text(), /^<!doctype html>/i); // real HTML, not a JSON-serialised Buffer
+    assert.match(await (await fetch(base + '/app.css')).text(), /--/);
     let all = '';
     for (const p of ['dashboard', 'signals', 'momentum', 'wallets', 'evidence', 'health', 'reports']) all += await (await fetch(`${base}/api/${p}`)).text();
     assert.ok(!/[0-9]{8,10}:[A-Za-z0-9_-]{30,}|github_pat_|ghp_|TELEGRAM|HELIUS_API_KEY|api-key=/.test(all));

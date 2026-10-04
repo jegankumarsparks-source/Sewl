@@ -99,7 +99,7 @@ export function startApp(cfg, { file = 'var/sewl.sqlite' } = {}) {
   const server = http.createServer((req, res) => {
     const send = (code, body, type = 'application/json; charset=utf-8') => {
       res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
-      res.end(typeof body === 'string' ? body : JSON.stringify(body));
+      res.end((typeof body === 'string' || Buffer.isBuffer(body)) ? body : JSON.stringify(body));
     };
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(405, { error: 'read-only app: GET only' });
     if (pw) {
