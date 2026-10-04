@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SEWL Lite — Paper Momentum Trader</title>
+<style>
+:root{--bg:#050505;--card:#0e0e12;--line:#1e1e26;--gold:#f5c518;--txt:#f2f2f5;--mut:#8a8a99;--grn:#2ee6a8;--red:#ff5c6c}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--txt);font-family:-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;padding-bottom:90px}
+.hdr{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:10px;padding:13px 16px;background:rgba(5,5,5,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.logo{font-weight:900;font-size:21px}.logo b{color:var(--gold)}
+.badge{font-size:10.5px;font-weight:800;letter-spacing:1.5px;color:var(--gold);border:1px solid var(--gold);border-radius:8px;padding:3px 8px}
+.st{margin-left:auto;font-size:11.5px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--grn);animation:pl 1.5s infinite}
+@keyframes pl{0%{box-shadow:0 0 0 0 rgba(46,230,168,.5)}70%{box-shadow:0 0 0 9px rgba(46,230,168,0)}100%{box-shadow:0 0 0 0 rgba(46,230,168,0)}}
+.wrap{padding:15px;max-width:560px;margin:0 auto}
+.note{font-size:12px;line-height:1.5;color:#ffd97a;background:linear-gradient(135deg,rgba(245,197,24,.09),rgba(245,197,24,.03));border:1px solid rgba(245,197,24,.28);border-radius:13px;padding:11px 13px;margin-bottom:14px}
+.hero{background:radial-gradient(120% 140% at 20% 0%,#17130a,#0e0e12 55%);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;gap:16px;align-items:center;margin-bottom:13px}
+.rw{position:relative;width:120px;height:120px;flex:none}
+.rw svg{transform:rotate(-90deg)}
+.rc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.rc b{font-size:19px}.rc span{font-size:10px;color:var(--mut)}
+.rb{stroke:#20202a;stroke-width:10;fill:none}.rf{stroke:url(#gg);stroke-width:10;fill:none;stroke-linecap:round;stroke-dasharray:339.3;stroke-dashoffset:339.3;transition:stroke-dashoffset 1.2s cubic-bezier(.2,.8,.2,1)}
+.kl{display:flex;flex-direction:column;gap:7px;flex:1;font-size:12.5px;color:var(--mut)}
+.kl b{color:var(--txt);font-size:14.5px;margin-left:auto}
+.kr{display:flex;align-items:center;gap:8px}
+.pill{font-size:10px;font-weight:800;letter-spacing:1px;color:var(--grn);border:1px solid rgba(46,230,168,.5);border-radius:999px;padding:3px 9px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:13px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:13px 15px;opacity:0;transform:translateY(12px);animation:up .5s forwards}
+.stat:nth-child(2){animation-delay:.06s}.stat:nth-child(3){animation-delay:.12s}.stat:nth-child(4){animation-delay:.18s}
+@keyframes up{to{opacity:1;transform:none}}
+.stat .l{font-size:10.5px;letter-spacing:1.2px;color:var(--mut);font-weight:700}
+.stat .v{font-size:22px;font-weight:800;margin-top:5px}
+.stat .s{font-size:10.5px;color:var(--mut);margin-top:2px}
+.scan{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:11px 13px;font-size:12px;color:var(--mut);margin-bottom:13px}
+.eq{display:flex;gap:4px}.eq i{width:4px;height:15px;background:var(--gold);border-radius:2px;animation:eq 1s infinite}
+.eq i:nth-child(2){animation-delay:.15s}.eq i:nth-child(3){animation-delay:.3s}.eq i:nth-child(4){animation-delay:.45s}
+@keyframes eq{0%,100%{transform:scaleY(.3)}50%{transform:scaleY(1)}}
+.pos{background:linear-gradient(150deg,#161205,#0e0e12 60%);border:1px solid rgba(245,197,24,.35);border-radius:17px;padding:15px;margin-bottom:11px;opacity:0;animation:up .6s forwards}
+.pos .tp{display:flex;align-items:center;gap:9px}
+.pos .ic{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--gold),#a97f00);display:flex;align-items:center;justify-content:center;font-weight:900;color:#111}
+.pos .nm{font-weight:800;font-size:14.5px}.pos .mt{font-size:10.5px;color:var(--mut);font-family:monospace;margin-top:1px}
+.pos .tg{margin-left:auto;font-size:9.5px;font-weight:800;color:var(--gold);border:1px solid rgba(245,197,24,.5);padding:3px 7px;border-radius:7px}
+.prg{height:7px;background:#20202a;border-radius:4px;margin-top:11px;overflow:hidden;position:relative}
+.prg i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,var(--grn),var(--gold));border-radius:4px;transition:width .8s}
+.prow{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mut);margin-top:7px}
+.tabs{position:fixed;bottom:0;left:0;right:0;z-index:50;display:flex;background:rgba(10,10,14,.92);backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:7px 6px calc(7px + env(safe-area-inset-bottom))}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:9.5px;color:var(--mut);background:none;border:none;padding:5px 0}
+.tab.on{color:var(--gold)}
+.tab svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.panel{display:none}.panel.on{display:block}
+.list{background:var(--card);border:1px solid var(--line);border-radius:15px;overflow:hidden}
+.li{display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.li:last-child{border:none}
+.li .t1{font-weight:700;font-size:12.5px;word-break:break-all}
+.li .t2{font-size:10.5px;color:var(--mut);margin-top:2px}
+.li .r{margin-left:auto;text-align:right;font-weight:800;font-size:12.5px;white-space:nowrap}
+h2.sec{font-size:12px;letter-spacing:2px;color:var(--mut);font-weight:800;margin:16px 2px 9px}
+.btn{display:inline-block;background:linear-gradient(135deg,var(--gold),#d9a400);color:#111;font-weight:800;font-size:13px;border:none;border-radius:11px;padding:11px 18px;margin:6px 4px}
+.ghost{background:none;border:1px solid var(--line);color:var(--mut);font-weight:700;font-size:12px;border-radius:11px;padding:10px 15px;margin:6px 4px}
+input{width:90px;background:#16161d;border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 10px;font-size:14px;text-align:right}
+</style></head><body>
+<header class="hdr"><div class="logo">SE<b>WL</b> <span style="font-size:11px;color:var(--mut)">LITE</span></div><div class="badge">PAPER ONLY</div>
+<div class="st"><span class="dot"></span><span id="clk">—</span></div></header>
+<div class="wrap">
+<div class="panel on" id="p-dash">
+ <div class="note">Single-file paper trader. Data: DEX Screener + Solana RPC (from your browser). No server, no keys, no real funds. Entries are simulated at live prices.</div>
+ <div class="hero"><div class="rw"><svg width="120" height="120" viewBox="0 0 128 128">
+  <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f5c518"/><stop offset="100%" stop-color="#ff8a3c"/></linearGradient></defs>
+  <circle class="rb" cx="64" cy="64" r="54"/><circle class="rf" id="ring" cx="64" cy="64" r="54"/></svg>
+  <div class="rc"><b id="eqV">$500.00</b><span>to $800 latch</span></div></div>
+  <div class="kl"><div class="kr">EQUITY <b id="eqT">$500.00</b></div>
+  <div style="font-size:11px;line-height:1.4">TP <b style="color:var(--grn)">1.5X</b> · SL <b style="color:var(--red)">-50%</b> · 24h time exit · rug write-off</div>
+  <div class="kr"><span class="pill" id="statePill">PAPER_ACTIVE</span></div></div></div>
+ <div class="grid">
+  <div class="stat"><div class="l">CASH</div><div class="v" id="cash">$500</div><div class="s">paper USD</div></div>
+  <div class="stat"><div class="l">DEPLOYED</div><div class="v" id="dep">$0</div><div class="s" id="depC">0 / 12</div></div>
+  <div class="stat"><div class="l">REALIZED P&L</div><div class="v" id="pnl" style="color:var(--mut)">$0.00</div><div class="s" id="wl">0W · 0L</div></div>
+  <div class="stat"><div class="l">OPEN SLOTS</div><div class="v" id="slots">12</div><div class="s">$20 each</div></div>
+ </div>
+ <div class="scan"><div class="eq"><i></i><i></i><i></i><i></i></div><div id="scanT">Starting scanner…</div></div>
+ <div id="posWrap"></div>
+</div>
+<div class="panel" id="p-jr"><h2 class="sec">JOURNAL</h2><div class="list" id="jrList"></div></div>
+<div class="panel" id="p-set"><h2 class="sec">SETTINGS</h2>
+ <div class="list"><div class="li"><div><div class="t1">Starting cash</div><div class="t2">resets ledger</div></div><div class="r">$ <input id="inCash" value="500"></div></div>
+ <div class="li"><div><div class="t1">Position size</div><div class="t2">per coin</div></div><div class="r">$ <input id="inSize" value="20"></div></div></div>
+ <button class="btn" onclick="saveSet()">Save & Reset</button>
+ <button class="ghost" onclick="if(confirm('Clear all local data?')){localStorage.clear();location.reload()}">Factory reset</button>
+ <div class="note" style="margin-top:12px">Runs even with screen off? Browsers pause timers when backgrounded — keep this tab visible or use "Add to Home Screen" and open it periodically. Full 24/7 needs the hosted version.</div>
+</div>
+</div>
+<nav class="tabs">
+ <button class="tab on" data-p="dash"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2z"/></svg>Trade</button>
+ <button class="tab" data-p="jr"><svg viewBox="0 0 24 24"><path d="M8 3h8l4 4v14H4V3z"/><path d="M9 12h6M9 16h6"/></svg>Journal</button>
+ <button class="tab" data-p="set"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.06-.4.1-.8.1-1.2z"/></svg>Settings</button>
+</nav>
+<script>
+const $=id=>document.getElementById(id);
+const LS='sewl_lite_v1';
+let S=JSON.parse(localStorage.getItem(LS)||'null')||{cash:500,size:20,max:12,start:500,positions:[],journal:[],cool:{}};
+const save=()=>localStorage.setItem(LS,JSON.stringify(S));
+const B=n=>{(n<0?'-':'')+'$'+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})};
+const fmt=n=>(n<0?'-':'')+'$'+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const ago=t=>{const s=(Date.now()-t)/1e3;return s<90?(s|0)+'s':s<5400?(s/60|0)+'m':(s/3600|0)+'h'};
+function jr(type,txt,amt){S.journal.unshift({t:Date.now(),type,txt,amt});S.journal=S.journal.slice(0,100);save();renderJR()}
+
+/* ---------- market data ---------- */
+async function ds(path){const r=await fetch('https://api.dexscreener.com'+path,{cache:'no-store'});if(!r.ok)throw new Error('ds '+r.status);return r.json()}
+async function rpc(method,params){const r=await fetch('https://api.mainnet.solana.com',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});const j=await r.json();if(j.error)throw new Error('rpc');return j.result}
+
+async function mintOk(mint){ // authorities null + Token-2022 extension allowlist {18,19}
+ try{
+  const a=await rpc('getAccountInfo',[mint,{encoding:'base64'}]);
+  const v=a&&a.value;if(!v)return{ok:false,why:'no account'};
+  const bin=atob(v.data[0]);const is2022=v.owner==='TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+  const dv=new DataView(new Uint8Array([...bin].map(c=>c.charCodeAt(0))).buffer);
+  const mintAuth=dv.getUint32(0,true)===1, freezeAuth=dv.getUint46?false:dv.getUint32(46,true)===1;
+  if(mintAuth||freezeAuth)return{ok:false,why:'authority active'};
+  if(is2022){
+   if(dv.getUint8(82)!==1)return{ok:false,why:'t2022 not mint'};
+   let off=83;
+   while(off+4<=bin.length){const t=dv.getUint16(off,true),l=dv.getUint16(off+2,true);
+    if(t!==18&&t!==19)return{ok:false,why:'extension '+t};off+=4+l}
+  }
+  return{ok:true}
+ }catch(e){return{ok:false,why:'rpc fail'}}
+}
+
+/* ---------- scanner ---------- */
+const COOLDOWN=36e5;
+let scanning=false;
+async function scan(){
+ if(scanning)return;scanning=true;
+ try{
+  const t=new Date();$('clk').textContent=t.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  const boosts=await ds('/token-boosts/latest/v1').catch(()=>[]);
+  const profs=await ds('/token-profiles/latest/v1').catch(()=>[]);
+  const mints=[...new Set([...boosts,...profs].filter(x=>x.chainId==='solana').map(x=>x.tokenAddress))].slice(0,24);
+  if(!mints.length){$('scanT').textContent='No leads from DEX Screener — retrying in 60s';scanning=false;return}
+  const pairs=(await ds('/token-pairs/v1/solana/'+mints.slice(0,24).join(','))).catch?null:null;
+  const pr=await ds('/token-pairs/v1/solana/'+mints.slice(0,24).join(','));
+  let hits=0,ev=0;
+  for(const p of (pr||[])){
+   if(p.chainId!=='solana')continue;ev++;
+   const pc=p.priceChange?.m5, v5=p.volume?.m5, v1=p.volume?.h1, liq=p.liquidity?.usd;
+   const age=p.pairCreatedAt?(Date.now()-p.pairCreatedAt)/36e5:null;
+   const mint=p.baseToken?.address;
+   if(pc==null||v5==null||v1==null||liq==null||age==null)continue;
+   const base=Math.max((v1-v5)/11,1);
+   if(pc<100||v5<5*base||liq<25000||age>6)continue;
+   if(S.positions.some(x=>x.mint===mint&&x.state==='OPEN'))continue;
+   if((S.cool[mint]||0)>Date.now())continue;
+   if(S.cash<S.size)continue;
+   if(S.positions.filter(x=>x.state==='OPEN').length>=S.max)continue;
+   hits++;
+   $('scanT').textContent=`TRIGGER ${p.baseToken?.symbol||mint} +${pc.toFixed(0)}% 5m — validating…`;
+   const mk=await mintOk(mint);
+   if(!mk.ok){S.cool[mint]=Date.now()+COOLDOWN;jr('REJECT',`${p.baseToken?.symbol||mint} — ${mk.why}`,0);continue}
+   const price=parseFloat(p.priceUsd);if(!price)continue;
+   enter(mint,p.baseToken?.symbol||'?',price,p.dexId||'');
+   break; // one entry per scan cycle
+  }
+  if(!hits)$('scanT').textContent=`Scanned ${ev} pairs · 0 triggers · next cycle 60s`;
+ }catch(e){$('scanT').textContent='scan error: '+e.message+' · retry 60s'}
+ scanning=false;
+}
+
+/* ---------- paper trading ---------- */
+function enter(mint,sym,price,venue){
+ const units=S.size/price;
+ S.cash-=S.size;
+ S.positions.unshift({mint,sym,price,units,entryAt:Date.now(),state:'OPEN',venue,peak:S.size});
+ S.cool[mint]=Date.now()+COOLDOWN;
+ jr('ENTRY',`${sym} @ $${price.toExponential(3)} (${venue})`,-S.size);
+ save();render();
+}
+async function markAll(){
+ let changed=false;
+ for(const p of S.positions){
+  if(p.state!=='OPEN')continue;
+  try{
+   const pr=await ds('/token-pairs/v1/solana/'+p.mint);
+   const pair=(pr||[]).find(x=>x.chainId==='solana');if(!pair)continue;
+   const price=parseFloat(pair.priceUsd);if(!price)continue;
+   const val=p.units*price;p.val=val;
+   if(val>p.peak)p.peak=val;
+   const mult=val/S.size;
+   const hold=Date.now()-p.entryAt;
+   let exit=null,why='';
+   if(mult>=1.5){exit=val;why='TAKE_PROFIT 1.5X'}
+   else if(mult<=0.5){exit=val;why='STOP_LOSS -50%'}
+   else if(hold>=864e5){exit=val;why='TIME 24h'}
+   else if(pair.liquidity?.usd<1000){exit=val*0.05;why='RUG (liquidity gone)'}
+   if(exit!=null){p.state='CLOSED';p.exitAt=Date.now();p.exit=exit;S.cash+=exit;
+    const pnl=exit-S.size;
+    jr(pnl>=0?'WIN':'LOSS',`${p.sym} ${why} — ${fmt(pnl)}`,pnl);changed=true}
+  }catch(e){}
+ }
+ if(changed){save()}render();
+}
+
+/* ---------- render ---------- */
+function render(){
+ const open=S.positions.filter(p=>p.state==='OPEN');
+ const dep=open.reduce((a,p)=>a+S.size,0);
+ let eq=S.cash+open.reduce((a,p)=>a+(p.val||S.size),0);
+ if(eq>=800)$('statePill').textContent='TARGET REACHED 🏁';
+ $('eqV').textContent=fmt(eq);$('eqT').textContent=fmt(eq);
+ $('ring').style.strokeDashoffset=339.3*(1-Math.min(1,eq/800));
+ $('cash').textContent=fmt(S.cash);$('dep').textContent=fmt(dep);
+ $('depC').textContent=open.length+' / '+S.max;$('slots').textContent=S.max-open.length;
+ const cl=S.positions.filter(p=>p.state==='CLOSED');
+ const pnl=cl.reduce((a,p)=>a+(p.exit-S.size),0);
+ $('pnl').textContent=fmt(pnl);$('pnl').style.color=pnl>0?'var(--grn)':pnl<0?'var(--red)':'var(--mut)';
+ $('wl').textContent=cl.filter(p=>p.exit>S.size).length+'W · '+cl.filter(p=>p.exit<=S.size).length+'L';
+ $('posWrap').innerHTML=open.map(p=>{const val=p.val||S.size,m=val/S.size;
+  return `<div class="pos"><div class="tp"><div class="ic">${(p.sym||'?')[0]}</div>
+  <div><div class="nm">${p.sym}</div><div class="mt">${p.mint.slice(0,6)}…${p.mint.slice(-4)} · ${ago(p.entryAt)} ago</div></div>
+  <div class="tg">${m>=1?'▲ '+m.toFixed(2)+'x':m.toFixed(2)+'x'}</div></div>
+  <div class="prg"><i style="width:${Math.min(100,m/1.5*100)}%"></i></div>
+  <div class="prow"><span style="color:var(--grn)">TP ${fmt(S.size*1.5)}</span><span>now ${fmt(val)}</span><span style="color:var(--red)">SL ${fmt(S.size*0.5)}</span></div></div>`}).join('');
+}
+function renderJR(){
+ $('jrList').innerHTML=S.journal.length?S.journal.slice(0,40).map(j=>`<div class="li"><div><div class="t1">${j.type}</div><div class="t2">${j.txt} · ${new Date(j.t).toLocaleTimeString('en-IN')}</div></div><div class="r" style="color:${j.amt>0?'var(--grn)':j.amt<0?'var(--red)':'var(--mut)'}">${j.amt?fmt(j.amt):''}</div></div>`).join('')
+ :'<div class="li"><div class="t2">No events yet — scanner running…</div></div>'}
+function saveSet(){S.cash=+ $('inCash').value||500;S.size=+ $('inSize').value||20;S.start=S.cash;S.positions=[];S.journal=[];S.cool={};save();render();renderJR();jr('RESET','settings saved',0)}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));t.classList.add('on');
+ document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));$('p-'+t.dataset.p).classList.add('on')});
+render();renderJR();
+scan();setInterval(scan,60000);
+markAll();setInterval(markAll,30000);
+</script></body></html>
