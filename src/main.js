@@ -137,9 +137,11 @@ if (mode === 'once') { console.log(await discoverCycle()); await historyCycle();
 console.log('SEWL worker starting. mode=run keyless=' + keyless);
 console.log('PAPER TRADING ONLY. $' + cfg.starting_cash_usd + ' -> target $' + cfg.target_equity_usd + ' (latch, not a promise).');
 let stopped = false;
+const lastDone = new Map(); const loopEvery = new Map(); const stallWarned = new Map();
 async function loop(name, seconds, fn) {
+  loopEvery.set(name, seconds); lastDone.set(name, Date.now());
   while (!stopped) {
-    try { await fn(); } catch (e) { health(name, 'ERROR', 'cycle-crash', { e: String(e).slice(0, 200) }); }
+    try { await fn(); lastDone.set(name, Date.now()); } catch (e) { health(name, 'ERROR', 'cycle-crash', { e: String(e).slice(0, 200) }); }
     await new Promise(r => setTimeout(r, seconds * 1000));
   }
 }
@@ -148,5 +150,14 @@ loop('history', 300, historyCycle);
 loop('watch', cfg.poll_seconds, watchCycle);
 loop('mark', cfg.mark_seconds, markCycle);
 loop('outbox', cfg.outbox_flush_seconds, () => outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID));
+setInterval(() => { // stall heartbeat: catches hangs, not just crashes
+  for (const [name, every] of loopEvery) {
+    const age = Date.now() - lastDone.get(name);
+    if (age > 3 * every * 1000 && Date.now() - (stallWarned.get(name) ?? 0) > 3 * every * 1000) {
+      stallWarned.set(name, Date.now());
+      try { health(name, 'WARN', 'loop-stalled', { last_done_age_s: Math.round(age / 1000), interval_s: every }); } catch {}
+    }
+  }
+}, 60_000).unref();
 setInterval(digestCycle, 24 * 3600 * 1000).unref();
 process.on('SIGINT', () => { stopped = true; console.log('stopping gracefully'); setTimeout(() => process.exit(0), 500); });

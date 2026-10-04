@@ -7,8 +7,17 @@ export class Dexscreener {
   async get(path) {
     await this.quota.take();
     const requestedAt = new Date().toISOString();
-    const res = await fetch(BASE + path, { headers: { accept: 'application/json' } });
-    const j = await res.json().catch(() => null);
+    let res, j;
+    try {
+      res = await fetch(BASE + path, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+      j = await res.json().catch((e) => { if (e.name === 'TimeoutError' || e.name === 'AbortError') throw e; return null; });
+    } catch (e) {
+      if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+        recordObservation(this.db, { provider: BASE, method: 'GET ' + path, requestedAt, status: 'ERROR', error: 'TIMEOUT' });
+        throw new Error('dexscreener TIMEOUT');
+      }
+      throw e;
+    }
     const evidenceId = recordObservation(this.db, { provider: BASE, method: 'GET ' + path, requestedAt, body: j, httpStatus: res.status, status: res.ok ? 'OK' : 'ERROR' });
     if (!res.ok) throw new Error('dexscreener ' + res.status);
     return { data: j, evidenceId };

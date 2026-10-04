@@ -24,7 +24,8 @@ export class Rpc {
       try {
         const res = await fetch(this.endpoint, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: ++this.id, method, params })
+          body: JSON.stringify({ jsonrpc: '2.0', id: ++this.id, method, params }),
+          signal: AbortSignal.timeout(15000)
         });
         const j = await res.json();
         let evidenceId = null;
@@ -39,8 +40,8 @@ export class Rpc {
         return { result: j.result, evidenceId };
       } catch (e) {
         lastErr = e;
-        if (/429|50[023]/i.test(String(e)) && attempt < retries) { await sleep(800 * (attempt + 1)); continue; }
-        if (this.record && evidence) recordObservation(this.db, { provider: this.endpoint, method, subject, requestedAt, status: 'ERROR', error: String(e).slice(0, 200) });
+        if ((e.name === 'TimeoutError' || e.name === 'AbortError' || /429|50[023]/i.test(String(e))) && attempt < retries) { await sleep(800 * (attempt + 1)); continue; }
+        if (this.record && evidence) recordObservation(this.db, { provider: this.endpoint, method, subject, requestedAt, status: 'ERROR', error: (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'TIMEOUT' : String(e).slice(0, 200) });
         throw e;
       }
     }

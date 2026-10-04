@@ -29,7 +29,8 @@ export class Outbox {
       try {
         const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true })
+          body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+          signal: AbortSignal.timeout(10000)
         });
         const j = await res.json().catch(() => null);
         if (res.ok && j?.ok) {
@@ -42,7 +43,7 @@ export class Outbox {
           this.db.prepare(`UPDATE telegram_outbox SET state='BLOCKED', attempts=attempts+1, last_error=? WHERE id=?`).run(JSON.stringify(j).slice(0, 200), r.id);
         }
       } catch (e) {
-        // initiated HTTP call is not confirmed delivery
+        // initiated HTTP call is not confirmed delivery; a timeout (TimeoutError/AbortError) leaves delivery UNKNOWN -> never SENT
         this.db.prepare(`UPDATE telegram_outbox SET state='AMBIGUOUS_DELIVERY', attempts=attempts+1, last_error=? WHERE id=?`).run(String(e).slice(0, 200), r.id);
       }
       await new Promise(r2 => setTimeout(r2, 1100)); // <=1/sec per chat

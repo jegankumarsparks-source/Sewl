@@ -10,8 +10,17 @@ export class CoinGecko {
     await this.quota.take();
     const requestedAt = new Date().toISOString();
     const url = `https://api.coingecko.com/api/v3/coins/solana/market_chart/range?vs_currency=usd&from=${fromUnix}&to=${toUnix}`;
-    const res = await fetch(url, { headers: { accept: 'application/json' } });
-    const j = await res.json().catch(() => null);
+    let res, j;
+    try {
+      res = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+      j = await res.json().catch((e) => { if (e.name === 'TimeoutError' || e.name === 'AbortError') throw e; return null; });
+    } catch (e) {
+      if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+        recordObservation(this.db, { provider: 'coingecko', method: 'market_chart/range', subject: key, requestedAt, status: 'ERROR', error: 'TIMEOUT' });
+        throw new Error('coingecko TIMEOUT');
+      }
+      throw e;
+    }
     recordObservation(this.db, { provider: 'coingecko', method: 'market_chart/range', subject: key, requestedAt, body: j, httpStatus: res.status, status: res.ok && j?.prices ? 'OK' : 'ERROR' });
     if (!res.ok || !j?.prices) throw new Error('coingecko ' + res.status);
     this.cache.set(key, j.prices);
