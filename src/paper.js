@@ -50,7 +50,7 @@ export function conservativeEquity(db) {
 }
 
 // ATOMIC capacity + completion-latch check, then entry. Returns position row or {denied}.
-export async function paperEntry(db, deps, { signalId, mint, entryUnitsRaw, decimals, quoteEvidenceId }) {
+export async function paperEntry(db, deps, { signalId, mint, entryUnitsRaw, decimals, quoteEvidenceId, origin = 'whale' }) {
   const cfg = deps.cfg;
   return withTx(db, () => {
     const exp = getExperiment(db);
@@ -75,13 +75,17 @@ export async function paperEntry(db, deps, { signalId, mint, entryUnitsRaw, deci
       budget = mul(cash, d(cfg.rotation.position_pct_of_cash)); // compounding: size grows with equity
       if (cmp(budget, 1n) < 0) return { denied: 'budget-too-small' };
     }
+    if (origin === 'momentum') {
+      const momOpen = Number(db.prepare(`SELECT COUNT(*) c FROM paper_positions WHERE state='OPEN' AND origin='momentum'`).get().c);
+      if (momOpen >= Number(cfg.momentum?.max_slots ?? 4)) return { denied: 'momentum-slot-cap' };
+    }
     const remaining = min(d(openLimit - openCount), div(cash, budget));
     if (cmp(remaining, 1n) < 0) return { denied: 'no-capacity' };
     if (db.prepare(`SELECT 1 FROM paper_positions WHERE state='OPEN' AND mint=?`).get(mint)) return { denied: 'mint-already-open' };
     const id = uuid();
-    db.prepare(`INSERT INTO paper_positions (id, experiment_id, signal_id, mint, entry_at, entry_units_raw, remaining_units_raw, decimals, entry_total_usd, entry_unit_cost_usd, state, exit_policy_version)
-      VALUES (?,?,?,?,?,?,?,?,?,?, 'OPEN', ?)`)
-      .run(id, EXP_ID, signalId, mint, nowIso(), entryUnitsRaw, entryUnitsRaw, decimals, fmt(budget), fmt(div(budget, d(entryUnitsRaw))), 'exit-v1');
+    db.prepare(`INSERT INTO paper_positions (id, experiment_id, signal_id, mint, entry_at, entry_units_raw, remaining_units_raw, decimals, entry_total_usd, entry_unit_cost_usd, state, exit_policy_version, origin)
+      VALUES (?,?,?,?,?,?,?,?,?,?, 'OPEN', ?, ?)`)
+      .run(id, EXP_ID, signalId, mint, nowIso(), entryUnitsRaw, entryUnitsRaw, decimals, fmt(budget), fmt(div(budget, d(entryUnitsRaw))), 'exit-v1', origin);
     db.prepare(`INSERT INTO paper_fills (id, position_id, side, at, units_raw, gross_usd, estimated_cost_usd, net_cash_delta_usd, fill_method, quote_evidence_id, idempotency_key)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
       .run(uuid(), id, 'BUY', nowIso(), entryUnitsRaw, fmt(budget), cfg.friction.entry_fee_usd, '-' + fmt(budget), 'jupiter-quote-readonly', quoteEvidenceId, uuid());

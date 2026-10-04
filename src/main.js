@@ -1,3 +1,4 @@
+import { momentumCycle } from './momentum.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { openDb, withTx, nowIso, uuid } from './db.js';
 import { Rpc, Quota } from './rpc.js';
@@ -134,6 +135,7 @@ if (mode === 'mark') { await markCycle(); console.log('mark cycle done'); proces
 if (mode === 'flush') { console.log(await outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID)); process.exit(0); }
 if (mode === 'once') { console.log(await discoverCycle()); await historyCycle(); await watchCycle(); await digestCycle(); console.log(await outbox.flush(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID)); process.exit(0); }
 
+health('worker', 'INFO', 'startup', { version: JSON.parse(readFileSync('package.json', 'utf8')).version + '+momentum-v1', keyless, mode: process.argv[2] ?? 'run', pid: process.pid });
 console.log('SEWL worker starting. mode=run keyless=' + keyless);
 console.log('PAPER TRADING ONLY. $' + cfg.starting_cash_usd + ' -> target $' + cfg.target_equity_usd + ' (latch, not a promise).');
 let stopped = false;
@@ -145,6 +147,7 @@ async function loop(name, seconds, fn) {
     await new Promise(r => setTimeout(r, seconds * 1000));
   }
 }
+loop('momentum', cfg.momentum?.cycle_seconds ?? 60, async () => { if (cfg.momentum?.enabled) await momentumCycle(db, deps); });
 loop('discovery', cfg.discovery_cadence_minutes * 60, discoverCycle);
 loop('history', 300, historyCycle);
 loop('watch', cfg.poll_seconds, watchCycle);

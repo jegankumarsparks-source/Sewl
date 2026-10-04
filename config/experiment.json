@@ -48,6 +48,12 @@
     "max_largest_owner": "0.15", "max_top_owners": "0.50",
     "market_fresh_seconds": 60, "quote_fresh_seconds": 20
   },
+  "momentum": {
+    "enabled": true, "cycle_seconds": 60, "window_minutes": 5,
+    "price_surge_pct": 100, "volume_surge_x": 5, "pool_age_max_hours": 6,
+    "min_liquidity_usd": 25000, "max_slots": 4, "validation_deadline_seconds": 30,
+    "cooldown_minutes": 60, "max_leads_per_cycle": 30
+  },
   "quotas": { "rpc_per_10s": 30, "dexscreener_per_min": 25, "jupiter_per_min": 25, "coingecko_per_min": 5 },
   "allow_scenario_entries": false,
   "evidence_retention_days": 90
