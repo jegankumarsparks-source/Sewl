@@ -8,6 +8,14 @@ const HIST = { encoding: 'jsonParsed', transactionDetails: 'full', maxSupportedT
 const lam = (x) => Number(x) / 1e9;
 const isMint = (s) => typeof s === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 export const validAddress = isMint;
+import { decodeMint, EXTENSION_ALLOWLIST } from './validation.js';
+// ids sequential from the official spl token-2022 ExtensionType enum (checked against mod.rs); plain-words meaning
+const EXT_WORDS = ['uninitialized', 'transfer fee: a cut of every transfer can be taken', 'transfer fee amount (account side)', 'mint close authority: the mint can be closed', 'confidential transfers (hidden amounts)', 'confidential transfer account', 'default account state: new accounts may start frozen', 'immutable owner', 'memo required on transfer', 'non-transferable: cannot be moved', 'interest-bearing: displayed balance drifts', 'CPI guard', 'permanent delegate: someone can move or burn ANY holder tokens', 'non-transferable account', 'transfer hook: custom program runs on every transfer', 'transfer hook account', 'confidential transfer fee config', 'confidential transfer fee amount', 'metadata pointer (harmless)', 'token metadata (harmless)', 'group pointer', 'token group', 'group member pointer', 'token group member', 'confidential mint/burn', 'scaled UI amount: displayed balance is scaled', 'pausable: transfers can be paused', 'pausable account', 'permissioned burn'];
+export function auditMint(acct) {
+  if (!acct) return null; const d = decodeMint(acct); if (!d.ok) return { ok: false, error: d.error };
+  return { ok: true, mint_authority: d.mintAuth, freeze_authority: d.freeze, mint_authority_revoked: d.mintAuth == null, freeze_authority_revoked: d.freeze == null,
+    extensions: d.extensions.map(e => ({ type: e.type, meaning: EXT_WORDS[e.type] ?? 'unknown extension (treated as unsafe)', allowed: e.type in EXTENSION_ALLOWLIST })), token_2022: d.extensions.length > 0 || null, source: 'ON-CHAIN: mint account via RPC' };
+}
 
 // Trades of ONE wallet from raw txs (owner-delta parser). Only SOL-quoted trades are used for P&L; the rest are counted, not guessed.
 export function walletTrades(txs, wallet) {
@@ -86,12 +94,13 @@ export class Chain {
   async coin(mint) {
     if (!isMint(mint)) throw new Error('bad-address');
     return this.cached('coin:' + mint, 20_000, async () => {
-      const [pairsRes, asset, txs, first, largest] = await Promise.all([
+      const [pairsRes, asset, txs, first, largest, acct] = await Promise.all([
         this.dex.tokensBatch([mint]).catch(() => null),
         this.cached('asset:' + mint, 3600_000, async () => ({ a: await this.h.rpc('getAsset', { id: mint }).catch(() => null) })),
         this.hist(mint, 100, 'desc').catch(() => []),
         this.cached('create:' + mint, 86_400_000, async () => ({ c: creatorOf(await this.hist(mint, 1, 'asc').catch(() => [])) })),
         this.h.rpc('getTokenLargestAccounts', [mint, { commitment: 'confirmed' }]).catch(() => null),
+        this.h.rpc('getAccountInfo', [mint, { encoding: 'base64' }], { cost: 1 }).catch(() => null),
       ]);
       const pairs = (pairsRes?.data ?? []).filter(p => p.chainId === 'solana'); const best = pairs.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0] ?? null;
       const a = asset.a; const supplyRaw = a?.token_info?.supply ?? null; const dec = a?.token_info?.decimals ?? null;
@@ -105,6 +114,7 @@ export class Chain {
         decimals: dec, supply_raw: supplyRaw == null ? null : String(supplyRaw), token_program: a?.token_info?.token_program ?? null,
         market: best ? { source: 'DEXSCREENER', price_usd: best.priceUsd ?? null, change_5m: best.priceChange?.m5 ?? null, change_1h: best.priceChange?.h1 ?? null, change_6h: best.priceChange?.h6 ?? null, change_24h: best.priceChange?.h24 ?? null,
           volume_24h_usd: best.volume?.h24 ?? null, volume_1h_usd: best.volume?.h1 ?? null, liquidity_usd: best.liquidity?.usd ?? null, market_cap_usd: best.marketCap ?? null, fdv_usd: best.fdv ?? null, pair: best.pairAddress ?? null, dex: best.dexId ?? null, pool_created_ms: best.pairCreatedAt ?? null, txns_h1: best.txns?.h1 ?? null } : null,
+        audit: auditMint(acct?.value), liquidity_note: 'Pool age and liquidity from DEX Screener. Sell-quote health is not re-checked in the app; see the signal gate checklist.',
         creator: first.c ? { ...first.c, source: 'ON-CHAIN: fee payer of the earliest transaction touching the mint' } : null,
         trades: trades.sort((a, b) => b.time - a.time).slice(0, 60), trades_note: 'Latest swaps touching this mint (SOL-quoted, supported venues), parsed from raw on-chain transactions.', holders, holders_note: holders ? 'Top token accounts from RPC; owner = wallet owning the account. Pool/curve accounts are included.' : null };
     });
@@ -121,7 +131,9 @@ export class Chain {
       for (let i = 0; i < Math.min(holdings.length, 60); i += 30) { const r = await this.dex.tokensBatch(holdings.slice(i, i + 30).map(h => h.mint)).catch(() => null); for (const p of r?.data ?? []) if (p.chainId === 'solana' && !priced.has(p.baseToken?.address)) priced.set(p.baseToken.address, p); }
       const hold = holdings.map(h => { const p = priced.get(h.mint); return { ...h, symbol: p?.baseToken?.symbol ?? null, price_usd: p?.priceUsd ?? null, est_value_usd: p?.priceUsd ? +(Number(h.amount) * Number(p.priceUsd)).toFixed(2) : null }; }).sort((a, b) => (b.est_value_usd ?? -1) - (a.est_value_usd ?? -1));
       const times = txs.map(t => t.blockTime).filter(Boolean);
-      const created = createdMints(txs, addr);
+      const created0 = createdMints(txs, addr); const cp = new Map();
+      if (created0.length) { const r = await this.dex.tokensBatch(created0.slice(0, 30).map(c => c.mint)).catch(() => null); for (const p of r?.data ?? []) if (p.chainId === 'solana' && !cp.has(p.baseToken?.address)) cp.set(p.baseToken.address, p); }
+      const created = created0.map(c => { const p = cp.get(c.mint); const liq = p?.liquidity?.usd ?? null; return { ...c, symbol: p?.baseToken?.symbol ?? null, liquidity_usd: liq, market_cap_usd: p?.marketCap ?? null, status: p == null ? 'NO_PAIR_FOUND' : liq != null && liq < 1000 ? 'DEAD_OR_RUGGED_HEURISTIC' : 'ACTIVE', status_note: 'HEURISTIC from DEX Screener liquidity (<$1000 or no pair); not proof of a rug.' }; });
       return { wallet: addr, sol_balance: bal?.value == null ? null : lam(bal.value), last_active: times.length ? Math.max(...times) : null, history_window: { txs: txs.length, oldest: times.length ? Math.min(...times) : null, newest: times.length ? Math.max(...times) : null, note: 'Most recent 100 transactions only; older activity is not included.' },
         holdings: hold, holdings_note: 'Token balances from RPC. Values are ESTIMATES at the DEX Screener price; unpriced coins show null.',
         coins: pnl.coins.slice(0, 80), pnl: pnl.summary, skipped_non_sol_trades: skippedNonSol, txs_parsed: parsed, created_coins: created, created_note: 'Pump.fun coins this wallet created within its latest 100 transactions only.' };

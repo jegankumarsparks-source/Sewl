@@ -12,7 +12,7 @@ const safeEq = (a, b) => timingSafeEqual(createHash('sha256').update(String(a)).
 const ROOT = path.resolve('app');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.json': 'application/json' };
-const STATIC = new Set(['index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'sw.js', 'icon.svg']);
+const STATIC = new Set(['index.html', 'app.css', 'app.js', 'coin.js', 'manifest.webmanifest', 'sw.js', 'icon.svg']);
 const num = (x) => (x == null || x === '' || Number.isNaN(Number(x)) ? null : Number(x));
 
 export function buildApi(db, cfg) {
