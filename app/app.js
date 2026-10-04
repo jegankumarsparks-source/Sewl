@@ -115,7 +115,7 @@ const V = {
   async health() {
     const d = await get('health'), st = d.last_startup;
     $('#view').innerHTML = head('Health', 'Worker and loops') + banner + `
-    <div class="grid"><div class="card"><div class="lbl">Process uptime</div><div class="kpi sm">${d.process_uptime_s >= 3600 ? (d.process_uptime_s / 3600).toFixed(1) + ' h' : Math.round(d.process_uptime_s / 60) + ' min'}</div></div>
+    <div class="grid"><div class="card"><div class="lbl">Process uptime</div><div class="kpi sm">${d.process_uptime_s == null ? 'n/a (snapshot)' : d.process_uptime_s >= 3600 ? (d.process_uptime_s / 3600).toFixed(1) + ' h' : Math.round(d.process_uptime_s / 60) + ' min'}</div></div>
       <div class="card"><div class="lbl">Startups logged</div><div class="kpi sm">${d.startups}</div></div>
       <div class="card"><div class="lbl">Last startup</div><div class="kpi sm" style="font-size:15px">${st ? ago(st.at) : 'none'}</div><div class="sub">${st ? esc(st.detail?.version ?? '') : ''}</div></div>
       <div class="card"><div class="lbl">Outbox</div><div class="sub">${d.outbox.map((o) => esc(o.state) + ' ' + o.n).join(' | ') || 'empty (no alert ever queued)'}</div></div></div>
