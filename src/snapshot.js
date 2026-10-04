@@ -47,6 +47,10 @@ export async function writeSnapshots({ db, cfg, state, chain = null, gecko = nul
   const h = api.health(); h.outbox = []; delete h.recent; h.stalls = cap(h.stalls, 10); h.summary = cap(h.summary, 30);
   const hel = helius?.creditsUsed ? { used: helius.creditsUsed(), cap: helius.monthlyCap ?? null } : null;
   put('health.json', wrap('health', { ...h, helius_credits: hel, process_uptime_s: null, note: 'Snapshot of the worker health. Uptime is not shown because the snapshot is a copy.' }));
+  const pn = api.pnl(); pn.equity_series = cap(pn.equity_series, 300); put('pnl.json', wrap('pnl', pn));
+  const jr = api.journal(); jr.entries = cap(jr.entries, 60); put('journal.json', wrap('journal', jr));
+  put('weekly.json', wrap('weekly', api.weekly()));
+  const lb = api.lab(); lb.positions = cap(lb.positions, 30); put('lab.json', wrap('lab', lb));
   const markets = { source: 'worker scan (DEX Screener pairs for the current lead set)', at: state?.lastPairsAt ?? null, coins: cap(state?.lastPairs ?? [], 40) };
   put('markets.json', wrap('markets', markets));
 
